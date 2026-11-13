@@ -41,6 +41,22 @@ Sistema de **análisis** de mercados para operar **futuros**: cripto (perpetuos 
 
 La carpeta debe quedarse completa (el `.exe` necesita `_internal` a su lado). Tu `.env` y tus datos se crean junto al `.exe`. Windows SmartScreen puede avisar porque el ejecutable no está firmado: *Más información → Ejecutar de todas formas*.
 
+### Opción A2 · App de macOS (Sonoma 14 o superior)
+
+1. En **Actions**, abre la última ejecución verde y descarga el artifact de tu Mac:
+   - `FuturesScope-macOS-apple-silicon` → Macs con chip **M1, M2, M3 o M4**
+   - `FuturesScope-macOS-intel` → Macs con procesador **Intel** (build experimental)
+
+   ¿No sabes cuál tienes? Menú  → *Acerca de este Mac*: si pone **Chip Apple M…** es Apple Silicon; si pone **Procesador Intel**, Intel.
+2. Abre el `.dmg` y arrastra **FuturesScope** a la carpeta **Aplicaciones**.
+3. La primera vez, en *Aplicaciones* haz **Control + clic** (o clic derecho) sobre FuturesScope → **Abrir** → **Abrir**. Es necesario porque la app no está firmada por Apple.
+   Si macOS dice que la app "está dañada", ejecuta esto en la Terminal y vuelve a abrirla:
+   ```bash
+   xattr -dr com.apple.quarantine /Applications/FuturesScope.app
+   ```
+
+Tu `.env` y tus datos se guardan en `~/Library/Application Support/FuturesScope`.
+
 ### Opción B · Doble clic con Python (Windows / Mac / Linux)
 
 Necesitas [Python 3.11+](https://www.python.org/downloads/) (en Windows marca *Add python.exe to PATH*).

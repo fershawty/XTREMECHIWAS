@@ -28,10 +28,13 @@ from pathlib import Path
 
 FROZEN = bool(getattr(sys, "frozen", False))
 ROOT = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))  # código y recursos
-HOME = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent  # datos y .env
 sys.path.insert(0, str(ROOT))
 
-from engine.config import APP_NAME, APP_VERSION, BUILD_TAG  # noqa: E402
+from engine.config import APP_HOME, APP_NAME, APP_VERSION, BUILD_TAG  # noqa: E402
+
+# Datos y .env: junto al .exe (Windows), ~/Library/Application Support/FuturesScope (macOS)
+HOME = APP_HOME
+IS_MAC = sys.platform == "darwin"
 
 # Paleta (igual que la interfaz)
 BG, PANEL, LINE, TEXT, MUTED, GREEN, RED = "#0E1117", "#12161F", "#1F2633", "#E6EDF3", "#7D8590", "#00FF88", "#FF3B30"
@@ -301,6 +304,15 @@ def native_message(text: str, error: bool = False) -> None:
             return
         except Exception:  # noqa: BLE001
             pass
+    if IS_MAC:
+        try:
+            safe = text.replace("\\", "/").replace('"', "'")
+            script = (f'display dialog "{safe}" with title "{APP_NAME}" buttons {{"Cerrar {APP_NAME}"}} '
+                      f'default button 1 with icon {"stop" if error else "note"}')
+            subprocess.run(["osascript", "-e", script], check=False)
+            return
+        except Exception:  # noqa: BLE001
+            pass
     say(text)
 
 
@@ -311,7 +323,7 @@ def run_headless(port: int, reason: str = "") -> int:
     """
     if reason:
         log_line(f"Ventana de arranque no disponible ({reason}); usando modo sin ventana.")
-    if os.name != "nt":
+    if os.name != "nt" and not IS_MAC:
         return run_console(port)
     proc = spawn_server(port)
     try:
@@ -372,7 +384,7 @@ def engine_check() -> str:
 def tcl_check() -> tuple[bool, str]:
     """
     ¿Puede arrancar Tcl/Tk (la base de la ventana de arranque)?
-    Obligatorio en el .exe de Windows; informativo en el resto.
+    Obligatorio en el .exe de Windows y la .app de macOS; informativo en el resto.
     """
     ensure_tcl_env()
     try:
@@ -385,7 +397,7 @@ def tcl_check() -> tuple[bool, str]:
             return False, f"Tk FALLO: falta tk.tcl en {tk_dir}"
         return True, f"Tcl/Tk OK ({interp.eval('info patchlevel')})"
     except Exception as exc:  # noqa: BLE001
-        required = FROZEN and os.name == "nt"
+        required = FROZEN and (os.name == "nt" or IS_MAC)
         return (not required), f"Tcl/Tk {'FALLO' if required else 'no disponible'}: {type(exc).__name__}: {exc}"
 
 

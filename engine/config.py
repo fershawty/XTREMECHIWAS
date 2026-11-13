@@ -33,7 +33,15 @@ BUILD_TAG = "BUILD 1 · GUS X SHAWTY X ALFREDOBONUS"
 # APP_HOME: donde viven tus datos y tu .env (en el .exe, la carpeta del .exe).
 IS_FROZEN: bool = bool(getattr(sys, "frozen", False))
 BASE_DIR: Path = Path(__file__).resolve().parent.parent
-APP_HOME: Path = Path(sys.executable).resolve().parent if IS_FROZEN else BASE_DIR
+if IS_FROZEN and sys.platform == "darwin":
+    # En macOS la .app puede ejecutarse desde una ubicación de solo lectura (App Translocation):
+    # los datos van a la carpeta estándar del usuario.
+    APP_HOME: Path = Path.home() / "Library" / "Application Support" / "FuturesScope"
+elif IS_FROZEN:
+    APP_HOME = Path(sys.executable).resolve().parent  # Windows: junto al .exe
+else:
+    APP_HOME = BASE_DIR
+APP_HOME.mkdir(parents=True, exist_ok=True)
 DATA_DIR: Path = APP_HOME / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 

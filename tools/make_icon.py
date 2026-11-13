@@ -1,7 +1,7 @@
 """
 tools/make_icon.py
 ==================
-Genera el icono de FUTURES-SCOPE (assets/icon.png y assets/icon.ico) con Pillow.
+Genera el icono de FUTURES-SCOPE (assets/icon.png, .ico para Windows y .icns para macOS) con Pillow.
 Diseño minimalista: tres velas sobre fondo oscuro, legible incluso a 16 px.
 
     python tools/make_icon.py
@@ -55,6 +55,7 @@ def main() -> None:
     big = draw_icon(512)
     big.resize((256, 256), Image.LANCZOS).save(ASSETS / "icon.png")
     big.save(ASSETS / "icon.ico", sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
+    big.save(ASSETS / "icon.icns", format="ICNS")  # Icono de la app de macOS
     print(f"Iconos generados en {ASSETS}")
 
 

@@ -7,9 +7,11 @@ Receta de PyInstaller para construir FuturesScope.exe (carpeta autocontenida).
     pip install -r requirements.txt pyinstaller==6.22.3
     pyinstaller futures_scope.spec --noconfirm
 
-Resultado: dist/FuturesScope/FuturesScope.exe (+ carpeta _internal).
-Copia la carpeta dist/FuturesScope completa: el .exe necesita _internal a su lado.
-Tu configuración (.env) y tus datos (data/) se crean junto al .exe en el primer arranque.
+Resultado:
+* Windows: dist/FuturesScope/FuturesScope.exe (+ carpeta _internal, cópiala completa).
+  Tu .env y tus datos se crean junto al .exe en el primer arranque.
+* macOS:   dist/FuturesScope.app (Sonoma 14 o superior).
+  Tu .env y tus datos se crean en ~/Library/Application Support/FuturesScope.
 """
 import sys
 
@@ -21,7 +23,7 @@ from PyInstaller.utils.hooks.tcl_tk import tcltk_info
 if not tcltk_info.available:
     message = ("tkinter/Tcl-Tk no funciona en este Python: la ventana de arranque no se podría abrir. "
                "Define TCL_LIBRARY y TK_LIBRARY (carpeta tcl de tu Python) o reinstala Python con Tcl/Tk.")
-    if sys.platform == "win32":
+    if sys.platform in ("win32", "darwin"):
         raise SystemExit("ERROR: " + message)
     print("AVISO: " + message + " (el lanzador usará el modo sin ventana)")
 
@@ -80,7 +82,25 @@ exe = EXE(
     exclude_binaries=True,
     name="FuturesScope",
     console=False,  # Sin ventana negra de consola: se usa la ventana de arranque
-    icon="assets/icon.ico",
+    icon="assets/icon.icns" if sys.platform == "darwin" else "assets/icon.ico",
     disable_windowed_traceback=False,
 )
 coll = COLLECT(exe, a.binaries, a.datas, name="FuturesScope")
+
+# macOS: empaquetar como FuturesScope.app (probado en Sonoma 14)
+if sys.platform == "darwin":
+    app = BUNDLE(
+        coll,
+        name="FuturesScope.app",
+        icon="assets/icon.icns",
+        bundle_identifier="com.futuresscope.app",
+        info_plist={
+            "CFBundleName": "FuturesScope",
+            "CFBundleDisplayName": "FUTURES-SCOPE",
+            "CFBundleShortVersionString": "1.0.0",
+            "CFBundleVersion": "1.0.0",
+            "LSMinimumSystemVersion": "14.0",
+            "NSHighResolutionCapable": True,
+            "NSHumanReadableCopyright": "BUILD 1 · GUS X SHAWTY X ALFREDOBONUS",
+        },
+    )

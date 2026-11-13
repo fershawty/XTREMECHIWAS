@@ -82,3 +82,79 @@ jobs:
           name: FuturesScope-Windows
           path: dist/
           retention-days: 30
+
+  macos-app:
+    name: Compilar .app (macOS ${{ matrix.arch }})
+    needs: tests
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14        # Sonoma, Apple Silicon (M1/M2/M3/M4)
+            arch: apple-silicon
+          - runner: macos-15-intel  # Último servidor Intel de GitHub (experimental)
+            arch: intel
+    runs-on: ${{ matrix.runner }}
+    continue-on-error: ${{ matrix.arch == 'intel' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Instalar dependencias + PyInstaller
+        run: pip install -r requirements.txt pyinstaller==6.22.3
+      - name: Verificar Tcl/Tk (ventana de arranque)
+        run: python -c "import tkinter; t = tkinter.Tcl(); print('Tcl', t.eval('info patchlevel'), t.eval('info library'))"
+      - name: Compilar
+        run: pyinstaller futures_scope.spec --noconfirm
+      - name: Comprobar Tcl/Tk empaquetado y compatibilidad con Sonoma (macOS 14)
+        run: |
+          APP=dist/FuturesScope.app/Contents
+          test -f $APP/Frameworks/_tcl_data/init.tcl || test -f $APP/Resources/_tcl_data/init.tcl || { echo "Falta _tcl_data"; exit 1; }
+          test -f $APP/Frameworks/_tk_data/tk.tcl || test -f $APP/Resources/_tk_data/tk.tcl || { echo "Falta _tk_data"; exit 1; }
+          echo "Tcl/Tk empaquetado OK"
+          python - <<'PY'
+          import pathlib, re, subprocess, sys
+          MAGIC = {b"\xcf\xfa\xed\xfe", b"\xce\xfa\xed\xfe", b"\xca\xfe\xba\xbe", b"\xfe\xed\xfa\xcf"}
+          worst, worst_file, count = (0, 0), "", 0
+          for p in pathlib.Path("dist/FuturesScope.app").rglob("*"):
+              if p.is_symlink() or not p.is_file():
+                  continue
+              with open(p, "rb") as fh:
+                  if fh.read(4) not in MAGIC:
+                      continue
+              count += 1
+              out = subprocess.run(["otool", "-l", str(p)], capture_output=True, text=True).stdout
+              # Solo los comandos que fijan la versión mínima de macOS (no las versiones de dylibs)
+              for block in out.split("Load command"):
+                  if "cmd LC_BUILD_VERSION" in block:
+                      m = re.search(r"^\s*minos (\d+)\.(\d+)", block, re.M)
+                  elif "cmd LC_VERSION_MIN_MACOSX" in block:
+                      m = re.search(r"^\s*version (\d+)\.(\d+)", block, re.M)
+                  else:
+                      continue
+                  if m and (int(m[1]), int(m[2])) > worst:
+                      worst, worst_file = (int(m[1]), int(m[2])), str(p)
+          print(f"{count} binarios Mach-O · macOS mínimo requerido: {worst[0]}.{worst[1]} ({worst_file})")
+          sys.exit(1 if worst > (14, 0) else 0)
+          PY
+      - name: Autotest de la app
+        run: |
+          dist/FuturesScope.app/Contents/MacOS/FuturesScope --selftest
+          cat "$HOME/Library/Application Support/FuturesScope/data/selftest.txt" || true
+      - name: Crear .dmg
+        run: |
+          mkdir dmg
+          ditto dist/FuturesScope.app dmg/FuturesScope.app
+          ln -s /Applications dmg/Aplicaciones
+          for i in 1 2 3; do
+            hdiutil create -volname "FUTURES-SCOPE" -srcfolder dmg -ov -format UDZO "FuturesScope-macOS-${{ matrix.arch }}.dmg" && break
+            sleep 5
+          done
+          ls -lh *.dmg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FuturesScope-macOS-${{ matrix.arch }}
+          path: FuturesScope-macOS-${{ matrix.arch }}.dmg
+          retention-days: 30
