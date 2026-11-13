@@ -1,0 +1,30 @@
+# Secretos y entornos
+.env
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Datos generados en ejecución (el calendario manual SÍ se versiona)
+data/*.db
+data/*.db-shm
+data/*.db-wal
+data/news_cache.json
+data/*.png
+data/*.log
+data/selftest.txt
+
+# PyInstaller
+build/
+dist/
+*.zip
+
+# Sistema
+.DS_Store
+Thumbs.db

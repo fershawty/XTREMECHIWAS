@@ -1,0 +1,17 @@
+# =============================================================================
+# FUTURES-SCOPE - Aceleradores OPCIONALES
+# -----------------------------------------------------------------------------
+# El bot NO los necesita: indicators.py detecta si están instalados y, si no,
+# usa su motor nativo (pandas/numpy) con las mismas fórmulas (Wilder, etc.).
+#
+# TA-Lib (C, muy rápido). Desde 0.6 trae wheels binarios (Windows/Linux ok).
+#   Si falla en tu plataforma: instala la librería C (brew install ta-lib /
+#   apt install libta-lib-dev) o simplemente ignóralo.
+#   Actívalo en .env con INDICATOR_BACKEND=talib (o "auto").
+TA-Lib==0.8.3
+
+# pandas-ta: sus versiones nuevas exigen Python >= 3.12 y fijan otras versiones
+# de numpy/pandas que CHOCAN con requirements.txt. Si lo quieres, instálalo en
+# un entorno virtual separado de Python 3.12:
+#   pip install "pandas-ta==0.4.71b0"
+# y pon INDICATOR_BACKEND=pandas_ta en .env (si algo falla, vuelve al nativo).

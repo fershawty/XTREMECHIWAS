@@ -1,0 +1,62 @@
+# Compila FuturesScope.exe en un servidor Windows de GitHub en cada push.
+# Descarga: pestaña "Actions" del repositorio -> última ejecución verde -> "Artifacts" -> FuturesScope-Windows
+name: Build FuturesScope.exe
+
+on:
+  push:
+    branches: [main, futures-scope]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Pruebas (Ubuntu)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+      - name: Pytest
+        env:
+          NEWS_FILTER_ENABLED: "false"
+          CONTEXT_ENABLED: "false"
+        run: pytest -q
+
+  windows-exe:
+    name: Compilar .exe (Windows)
+    needs: tests
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Instalar dependencias + PyInstaller
+        run: pip install -r requirements.txt pyinstaller==6.22.3
+      - name: Compilar
+        run: pyinstaller futures_scope.spec --noconfirm
+      - name: Autotest del ejecutable
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath "dist\FuturesScope\FuturesScope.exe" -ArgumentList "--selftest" -Wait -PassThru
+          Get-Content "dist\FuturesScope\data\selftest.txt" -ErrorAction SilentlyContinue
+          Get-Content "dist\FuturesScope\data\launcher.log" -Tail 40 -ErrorAction SilentlyContinue
+          if ($p.ExitCode -ne 0) { Write-Error "El autotest del .exe falló"; exit 1 }
+          # Entregamos la carpeta limpia (los datos y el .env se crean en el primer arranque del usuario)
+          Remove-Item -Recurse -Force "dist\FuturesScope\data", "dist\FuturesScope\.env" -ErrorAction SilentlyContinue
+      - name: Empaquetar
+        shell: pwsh
+        run: Compress-Archive -Path "dist\FuturesScope" -DestinationPath "FuturesScope-Windows.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FuturesScope-Windows
+          path: FuturesScope-Windows.zip
+          retention-days: 30

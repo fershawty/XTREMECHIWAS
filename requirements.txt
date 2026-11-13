@@ -1,0 +1,41 @@
+# =============================================================================
+# FUTURES-SCOPE - Dependencias principales (Python 3.11+)
+# -----------------------------------------------------------------------------
+# Versiones EXACTAS verificadas juntas en un entorno limpio de Python 3.11.
+# Instalar con:   pip install -r requirements.txt
+#
+# NOTA: ccxt 4.5.92 fija cffi==2.0.0, por eso yfinance va en 1.7.0
+#       (yfinance 1.8.0 arrastra curl-cffi 0.17, que exige cffi>=2.1.1).
+# Los aceleradores opcionales (TA-Lib, pandas-ta) están en requirements-optional.txt
+# El bot funciona 100% sin ellos gracias al motor de indicadores nativo.
+# =============================================================================
+
+# --- Datos de mercado --------------------------------------------------------
+ccxt==4.5.92              # Cripto: Binance / Bybit / OKX (futuros USDT-M y COIN-M)
+yfinance==1.7.0           # Acciones, ETFs, índices y futuros CME (ES=F, NQ=F...)
+tradingview-ta==3.3.0     # (Opcional en runtime) Consenso técnico de TradingView
+
+# --- Cálculo numérico / análisis técnico -------------------------------------
+numpy==2.4.6
+pandas==3.1.1
+
+# --- Visualización -----------------------------------------------------------
+plotly==7.1.0             # Velas interactivas en la UI
+mplfinance==0.12.10b0     # Exportación de gráficos estáticos (PNG) y backtests
+six==1.17.0               # Requerido por mplfinance (no lo declara como dependencia)
+matplotlib==3.11.2
+
+# --- Backend / UI ------------------------------------------------------------
+fastapi==0.162.5          # API REST del motor de análisis (api.py)
+uvicorn[standard]==0.54.0 # Servidor ASGI para FastAPI
+pydantic==2.14.3
+streamlit==1.67.0         # Interfaz tipo trading terminal (app.py)
+
+# --- Utilidades --------------------------------------------------------------
+python-dotenv==1.2.4      # Carga de API keys y configuración desde .env
+requests==2.34.2          # Noticias, Telegram, FRED, RSS
+
+# --- Backtesting / testing ---------------------------------------------------
+backtrader==1.9.78.123    # Motor de backtesting alternativo (tests/backtest_runner.py)
+pytest==9.2.0
+httpx==0.28.1             # Requerido por el TestClient de FastAPI en los tests

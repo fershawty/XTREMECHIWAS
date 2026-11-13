@@ -1,0 +1,18 @@
+# Tema oscuro tipo trading terminal para Streamlit
+[theme]
+base = "dark"
+primaryColor = "#00FF88"
+backgroundColor = "#0E1117"
+secondaryBackgroundColor = "#12161F"
+textColor = "#E6EDF3"
+font = "sans serif"
+
+[server]
+headless = true
+runOnSave = false
+
+[browser]
+gatherUsageStats = false
+
+[client]
+toolbarMode = "minimal"
