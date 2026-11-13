@@ -250,6 +250,27 @@ class Splash:
         self.root.destroy()
 
 
+def ensure_tcl_env() -> None:
+    """
+    En el .exe, apunta TCL_LIBRARY / TK_LIBRARY a los datos de Tcl/Tk empaquetados.
+    (Si faltan, tkinter falla con "Can't find a usable init.tcl".)
+    """
+    if not FROZEN:
+        return
+    targets = {
+        "TCL_LIBRARY": ("init.tcl", ("_tcl_data", "tcl/tcl8.6", "lib/tcl8.6", "tcl8.6")),
+        "TK_LIBRARY": ("tk.tcl", ("_tk_data", "tcl/tk8.6", "lib/tk8.6", "tk8.6")),
+    }
+    for var, (marker, rels) in targets.items():
+        current = os.environ.get(var)
+        if current and (Path(current) / marker).exists():
+            continue
+        for rel in rels:
+            if (ROOT / rel / marker).exists():
+                os.environ[var] = str(ROOT / rel)
+                break
+
+
 def gui_available() -> bool:
     """¿Hay tkinter y pantalla?"""
     try:
@@ -258,6 +279,52 @@ def gui_available() -> bool:
     except ImportError:
         return False
     return os.name == "nt" or sys.platform == "darwin" or bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+
+
+def log_line(text: str) -> None:
+    """Añade una línea a data/launcher.log (sin fallar nunca)."""
+    try:
+        LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(LOG_FILE, "a", encoding="utf-8", errors="replace") as fh:
+            fh.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {text}\n")
+    except OSError:
+        pass
+
+
+def native_message(text: str, error: bool = False) -> None:
+    """Cuadro de mensaje nativo de Windows (bloquea hasta pulsar Aceptar). En otros sistemas, consola."""
+    if os.name == "nt":
+        try:
+            import ctypes
+
+            ctypes.windll.user32.MessageBoxW(0, text, f"{APP_NAME} · {BUILD_TAG}", 0x10 if error else 0x40)
+            return
+        except Exception:  # noqa: BLE001
+            pass
+    say(text)
+
+
+def run_headless(port: int, reason: str = "") -> int:
+    """
+    Plan B si la ventana de arranque no puede abrirse: arranca el motor, abre el navegador
+    y muestra un aviso nativo. Al pulsar Aceptar se cierra el programa.
+    """
+    if reason:
+        log_line(f"Ventana de arranque no disponible ({reason}); usando modo sin ventana.")
+    if os.name != "nt":
+        return run_console(port)
+    proc = spawn_server(port)
+    try:
+        if not wait_ready(proc, port):
+            native_message(f"No se pudo iniciar el motor de análisis.\n\nRevisa el registro:\n{LOG_FILE}", error=True)
+            return 1
+        url = f"http://127.0.0.1:{port}"
+        webbrowser.open(url)
+        native_message(f"{APP_NAME} está abierto en tu navegador:\n{url}\n\n"
+                       "Mantén este aviso abierto mientras usas la app.\nPulsa Aceptar para CERRAR el programa.")
+        return 0
+    finally:
+        stop_server(proc)
 
 
 # =============================================================================
@@ -302,17 +369,40 @@ def engine_check() -> str:
     return f"motor OK ({res.signal.direction} {res.signal.score:.0f}/100)"
 
 
+def tcl_check() -> tuple[bool, str]:
+    """
+    ¿Puede arrancar Tcl/Tk (la base de la ventana de arranque)?
+    Obligatorio en el .exe de Windows; informativo en el resto.
+    """
+    ensure_tcl_env()
+    try:
+        import tkinter
+
+        interp = tkinter.Tcl()  # Necesita init.tcl: es justo lo que falla si no se empaquetó
+        library = interp.eval("info library")
+        tk_dir = os.environ.get("TK_LIBRARY") or str(Path(library).parent / "tk8.6")
+        if FROZEN and not (Path(tk_dir) / "tk.tcl").exists():
+            return False, f"Tk FALLO: falta tk.tcl en {tk_dir}"
+        return True, f"Tcl/Tk OK ({interp.eval('info patchlevel')})"
+    except Exception as exc:  # noqa: BLE001
+        required = FROZEN and os.name == "nt"
+        return (not required), f"Tcl/Tk {'FALLO' if required else 'no disponible'}: {type(exc).__name__}: {exc}"
+
+
 def selftest() -> int:
-    """Comprueba el motor, arranca el servidor, verifica /_stcore/health y la página, y sale (0 = OK)."""
+    """Comprueba Tcl/Tk y el motor, arranca el servidor, verifica /_stcore/health y la página (0 = OK)."""
     port = free_port(8765)
     t0 = time.time()
+    tcl_ok, tcl_msg = tcl_check()
+    say(tcl_msg)
     try:
         engine_msg = engine_check()
     except Exception as exc:  # noqa: BLE001
         engine_msg = f"motor FALLO: {type(exc).__name__}: {exc}"
     say(engine_msg)
+    engine_msg = f"{tcl_msg} · {engine_msg}"
     proc = spawn_server(port)
-    ok = wait_ready(proc, port, timeout=240) and engine_msg.startswith("motor OK")
+    ok = wait_ready(proc, port, timeout=240) and "motor OK" in engine_msg and tcl_ok
     if ok:
         try:
             with urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=10) as resp:
@@ -338,9 +428,16 @@ def main() -> None:
     if "--selftest" in args:
         sys.exit(selftest())
     port = free_port()
-    if "--console" in args or not gui_available():
+    if "--console" in args:
         sys.exit(run_console(port))
-    Splash(port).run()
+    ensure_tcl_env()
+    if not gui_available():
+        sys.exit(run_headless(port, "sin entorno gráfico"))
+    try:
+        splash = Splash(port)
+    except Exception as exc:  # noqa: BLE001 - p. ej. TclError: Can't find a usable init.tcl
+        sys.exit(run_headless(port, f"{type(exc).__name__}: {exc}"))
+    splash.run()
 
 
 if __name__ == "__main__":

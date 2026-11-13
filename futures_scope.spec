@@ -11,7 +11,19 @@ Resultado: dist/FuturesScope/FuturesScope.exe (+ carpeta _internal).
 Copia la carpeta dist/FuturesScope completa: el .exe necesita _internal a su lado.
 Tu configuración (.env) y tus datos (data/) se crean junto al .exe en el primer arranque.
 """
+import sys
+
 from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_submodules, copy_metadata
+from PyInstaller.utils.hooks.tcl_tk import tcltk_info
+
+# La ventana de arranque usa tkinter. Si Tcl/Tk no funciona en el Python que compila,
+# PyInstaller lo omite SIN avisar y el .exe falla con "Can't find a usable init.tcl".
+if not tcltk_info.available:
+    message = ("tkinter/Tcl-Tk no funciona en este Python: la ventana de arranque no se podría abrir. "
+               "Define TCL_LIBRARY y TK_LIBRARY (carpeta tcl de tu Python) o reinstala Python con Tcl/Tk.")
+    if sys.platform == "win32":
+        raise SystemExit("ERROR: " + message)
+    print("AVISO: " + message + " (el lanzador usará el modo sin ventana)")
 
 datas, binaries, hiddenimports = [], [], []
 

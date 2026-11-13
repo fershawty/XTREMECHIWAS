@@ -41,8 +41,32 @@ jobs:
           cache: pip
       - name: Instalar dependencias + PyInstaller
         run: pip install -r requirements.txt pyinstaller==6.22.3
+      - name: Verificar Tcl/Tk (ventana de arranque)
+        shell: pwsh
+        run: |
+          python -c "import tkinter; t = tkinter.Tcl(); print('Tcl', t.eval('info patchlevel'), t.eval('info library'))"
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "Tcl no arranca con la configuración por defecto: se apunta a la carpeta tcl de Python"
+            $tcl = Join-Path $env:pythonLocation "tcl\tcl8.6"
+            $tk = Join-Path $env:pythonLocation "tcl\tk8.6"
+            Get-ChildItem (Join-Path $env:pythonLocation "tcl") -ErrorAction SilentlyContinue | Select-Object Name
+            "TCL_LIBRARY=$tcl" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+            "TK_LIBRARY=$tk" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+            $env:TCL_LIBRARY = $tcl
+            $env:TK_LIBRARY = $tk
+            python -c "import tkinter; t = tkinter.Tcl(); print('Tcl (reparado)', t.eval('info library'))"
+            if ($LASTEXITCODE -ne 0) { Write-Error "Tcl/Tk no utilizable en este Python"; exit 1 }
+          }
       - name: Compilar
         run: pyinstaller futures_scope.spec --noconfirm
+      - name: Comprobar datos de Tcl/Tk empaquetados
+        shell: pwsh
+        run: |
+          foreach ($d in "_tcl_data", "_tk_data") {
+            $p = "dist\FuturesScope\_internal\$d"
+            if (-not (Test-Path $p)) { Write-Error "Falta $p en el paquete"; exit 1 }
+            "{0}: {1} archivos" -f $d, (Get-ChildItem $p -Recurse -File).Count
+          }
       - name: Autotest del ejecutable
         shell: pwsh
         run: |
@@ -52,11 +76,9 @@ jobs:
           if ($p.ExitCode -ne 0) { Write-Error "El autotest del .exe falló"; exit 1 }
           # Entregamos la carpeta limpia (los datos y el .env se crean en el primer arranque del usuario)
           Remove-Item -Recurse -Force "dist\FuturesScope\data", "dist\FuturesScope\.env" -ErrorAction SilentlyContinue
-      - name: Empaquetar
-        shell: pwsh
-        run: Compress-Archive -Path "dist\FuturesScope" -DestinationPath "FuturesScope-Windows.zip"
+      # Se sube la carpeta tal cual: GitHub la entrega en UN solo .zip con FuturesScope/ dentro
       - uses: actions/upload-artifact@v4
         with:
           name: FuturesScope-Windows
-          path: FuturesScope-Windows.zip
+          path: dist/
           retention-days: 30
