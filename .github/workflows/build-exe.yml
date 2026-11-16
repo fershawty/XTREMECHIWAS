@@ -96,6 +96,9 @@ jobs:
     env:
       PY: .venv/bin/python
       MACOSX_DEPLOYMENT_TARGET: "14.0"  # Todo lo que se compile aquí debe arrancar en Sonoma
+      # cryptography (dependencia de ccxt) ya no publica binario para Mac Intel en su última
+      # versión; sin esto pip la compila enlazada a librerías de macOS 15. Se fuerza el binario oficial.
+      PIP_ONLY_BINARY: "cryptography,cffi"
     steps:
       - uses: actions/checkout@v4
       # Python OFICIAL de python.org (universal2, compatible desde macOS 11): el Python de
