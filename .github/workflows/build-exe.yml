@@ -90,12 +90,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: macos-15        # Apple Silicon (M1/M2/M3/M4)
-            arch: apple-silicon
-          - runner: macos-15-intel  # Intel (experimental)
+          - runner: macos-15-intel  # Mac Intel (compatible con Sonoma 14)
             arch: intel
     runs-on: ${{ matrix.runner }}
-    continue-on-error: ${{ matrix.arch == 'intel' }}
     env:
       PY: .venv/bin/python
     steps:
