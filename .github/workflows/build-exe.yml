@@ -95,6 +95,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     env:
       PY: .venv/bin/python
+      MACOSX_DEPLOYMENT_TARGET: "14.0"  # Todo lo que se compile aquí debe arrancar en Sonoma
     steps:
       - uses: actions/checkout@v4
       # Python OFICIAL de python.org (universal2, compatible desde macOS 11): el Python de
@@ -105,16 +106,19 @@ jobs:
           sudo installer -pkg py.pkg -target /
           /Library/Frameworks/Python.framework/Versions/3.11/bin/python3.11 -m venv .venv
           $PY -m pip install --upgrade pip
-      - name: Instalar dependencias + PyInstaller
-        run: $PY -m pip install -r requirements.txt pyinstaller==6.22.3
-      - name: Verificar Tcl/Tk (ventana de arranque)
-        run: $PY -c "import tkinter; t = tkinter.Tcl(); print('Tcl', t.eval('info patchlevel'), t.eval('info library'))"
-      # Homebrew del servidor trae OpenSSL compilada para macOS 15 en /usr/local/lib:
-      # se desvincula para que PyInstaller use la del Python oficial (compatible con Sonoma).
+      # Homebrew del servidor trae OpenSSL compilada para macOS 15: se elimina ANTES de instalar
+      # para que nada se enlace a ella (la app usará la del Python oficial, compatible con Sonoma).
       - name: Aislar OpenSSL de Homebrew
         run: |
-          for f in openssl@3 openssl@1.1 openssl; do brew unlink "$f" 2>/dev/null || true; done
-          sudo rm -rf /usr/local/lib/ossl-modules /usr/local/lib/libcrypto* /usr/local/lib/libssl* 2>/dev/null || true
+          brew uninstall --ignore-dependencies --force openssl@3 openssl@1.1 2>/dev/null || true
+          sudo rm -rf /usr/local/lib/ossl-modules /usr/local/lib/libcrypto* /usr/local/lib/libssl* /usr/local/opt/openssl* 2>/dev/null || true
+      - name: Instalar dependencias + PyInstaller
+        run: |
+          $PY -m pip install -r requirements.txt pyinstaller==6.22.3 2>&1 | tee pip.log
+          echo "--- Paquetes compilados desde código fuente (si hay):"
+          grep -iE "Building wheel for|Building wheels for" pip.log || echo "ninguno"
+      - name: Verificar Tcl/Tk (ventana de arranque)
+        run: $PY -c "import tkinter; t = tkinter.Tcl(); print('Tcl', t.eval('info patchlevel'), t.eval('info library'))"
       - name: Compilar
         run: $PY -m PyInstaller futures_scope.spec --noconfirm
       - name: Comprobar Tcl/Tk empaquetado y compatibilidad con Sonoma (macOS 14)
@@ -151,6 +155,13 @@ jobs:
           print(f"{count} binarios Mach-O · macOS mínimo requerido: {worst[0]}.{worst[1]} ({worst_file})")
           for b in bad[:20]:
               print("  exige más que Sonoma:", b)
+          if bad:
+              print("--- Binarios que enlazan libcrypto/libssl:")
+              for p in pathlib.Path("dist/FuturesScope.app").rglob("*.so"):
+                  deps = subprocess.run(["otool", "-L", str(p)], capture_output=True, text=True).stdout
+                  hits = [l.strip() for l in deps.splitlines()[1:] if "libcrypto" in l or "libssl" in l]
+                  if hits:
+                      print(f"  {p.name}: {hits}")
           sys.exit(1 if bad else 0)
           PY
       - name: Autotest de la app
