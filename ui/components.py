@@ -398,6 +398,11 @@ def render_kpis(result) -> None:
     if snap.get("oi_change_pct") is not None:
         oi = snap["oi_change_pct"]
         items.append(kpi("OI 5v", f"{oi:+.1f}%", "up" if oi > 0 else "down"))
+    ob = getattr(md, "order_book", None)
+    if ob and ob.get("imbalance") is not None:
+        imb = ob["imbalance"]
+        items.append(kpi("Libro B/A", f"{imb:+.0%}", "up" if imb > 0.1 else "down" if imb < -0.1 else ""))
+        items.append(kpi("Spread", f"{ob.get('spread_pct', 0):.3f}%"))
     if result.context is not None and result.context.confidence > 0:
         b = result.context.bias
         items.append(kpi("Contexto", f"{b:+.2f}", "up" if b > 0.1 else "down" if b < -0.1 else ""))

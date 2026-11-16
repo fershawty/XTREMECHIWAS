@@ -148,6 +148,7 @@ class MarketData:
     contract: str | None = None
     open_interest: pd.Series | None = None
     funding_rate: float | None = None
+    order_book: dict | None = None  # Microestructura: spread, desequilibrio, muros
     warnings: list[str] = field(default_factory=list)
     fetched_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -428,6 +429,7 @@ class DataFeeder:
                         contract=contract.value,
                         open_interest=self._fetch_open_interest(exchange, ccxt_symbol, spec, limit),
                         funding_rate=self._fetch_funding_rate(exchange, ccxt_symbol),
+                        order_book=self._fetch_order_book(exchange, ccxt_symbol),
                         warnings=warnings,
                     )
                 except Exception as exc:  # noqa: BLE001 - queremos seguir con el siguiente
@@ -543,6 +545,44 @@ class DataFeeder:
             return None
 
     @staticmethod
+    def _fetch_order_book(exchange: Any, symbol: str, depth: int = 50) -> dict | None:
+        """
+        Microestructura del libro de órdenes (L2 público):
+        * spread_pct: diferencial compra/venta en % (spread alto = mala ejecución)
+        * imbalance: (vol. compras - vol. ventas) / total en los 10 mejores niveles (-1..+1)
+        * wall: nivel con tamaño >= 8x la mediana (posible muro institucional)
+        """
+        try:
+            if not exchange.has.get("fetchOrderBook"):
+                return None
+            ob = exchange.fetch_order_book(symbol, limit=depth)
+            bids, asks = ob.get("bids") or [], ob.get("asks") or []
+            if len(bids) < 10 or len(asks) < 10:
+                return None
+            best_bid, best_ask = float(bids[0][0]), float(asks[0][0])
+            mid = (best_bid + best_ask) / 2.0
+            bid_vol = sum(float(b[1]) for b in bids[:10])
+            ask_vol = sum(float(a[1]) for a in asks[:10])
+            total = bid_vol + ask_vol
+            sizes = sorted(float(r[1]) for r in bids[:25] + asks[:25])
+            median = sizes[len(sizes) // 2] or 1e-12
+            wall = None
+            for side, rows in (("bid", bids[:25]), ("ask", asks[:25])):
+                for price, size in rows:
+                    if float(size) >= 8.0 * median and (wall is None or float(size) > wall["size"]):
+                        wall = {"side": side, "price": float(price), "size": float(size),
+                                "ratio": round(float(size) / median, 1)}
+            return {
+                "bid": best_bid, "ask": best_ask,
+                "spread_pct": round((best_ask - best_bid) / mid * 100.0, 4),
+                "imbalance": round((bid_vol - ask_vol) / total, 3) if total > 0 else 0.0,
+                "bid_vol10": round(bid_vol, 4), "ask_vol10": round(ask_vol, 4), "wall": wall,
+            }
+        except Exception as exc:  # noqa: BLE001
+            log.info("Libro de órdenes no disponible en %s: %s", exchange.id, exc)
+            return None
+
+    @staticmethod
     def _fetch_funding_rate(exchange: Any, symbol: str) -> float | None:
         """Funding rate actual del perpetuo (positivo = los longs pagan a los shorts)."""
         try:
@@ -611,6 +651,15 @@ class DataFeeder:
     def _get_demo(symbol: str, spec: TimeframeSpec, limit: int) -> MarketData:
         """Datos sintéticos claramente marcados como DEMO."""
         df, oi = generate_demo_data(spec.key, n=max(limit, 300), symbol=symbol)
+        px = float(df["close"].iloc[-1])
+        chg = float(df["close"].iloc[-1] / df["close"].iloc[-6] - 1.0)
+        imb = round(float(np.tanh(chg * 30.0)) * 0.7, 3)  # Libro sintético coherente con la tendencia
+        demo_ob = {
+            "bid": px * 0.9999, "ask": px * 1.0001, "spread_pct": 0.02, "imbalance": imb,
+            "bid_vol10": 120.0, "ask_vol10": 80.0,
+            "wall": {"side": "bid" if imb >= 0 else "ask",
+                     "price": px * (0.995 if imb >= 0 else 1.005), "size": 50.0, "ratio": 9.0},
+        }
         return MarketData(
             df=df.tail(limit),
             symbol=symbol,
@@ -622,6 +671,7 @@ class DataFeeder:
             contract="USDT-M",
             open_interest=oi,
             funding_rate=0.0001,
+            order_book=demo_ob,
             warnings=["MODO DEMO: datos SINTÉTICOS generados localmente. No operar con estas señales."],
         )
 

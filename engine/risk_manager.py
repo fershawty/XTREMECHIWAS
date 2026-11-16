@@ -45,6 +45,39 @@ LOSS_STATUSES = ("LOSS", "MANUAL_LOSS")
 
 
 # =============================================================================
+# Perfiles de capital: bajo / medio / alto
+# =============================================================================
+@dataclass(frozen=True)
+class CapitalProfile:
+    """Límites de riesgo recomendados según el tamaño de la cuenta."""
+
+    key: str
+    label: str
+    max_equity: float  # Capital máximo (inclusive) para este perfil
+    risk_pct: float  # Riesgo recomendado por operación
+    max_leverage: float  # Apalancamiento máximo permitido
+    note: str
+
+
+CAPITAL_PROFILES: tuple[CapitalProfile, ...] = (
+    CapitalProfile("bajo", "CAPITAL BAJO", 500.0, 0.5, 3.0,
+                   "Cuenta pequeña: sobrevivir es lo primero. Riesgo 0.5% y máx. 3x; prioriza señales ≥85."),
+    CapitalProfile("medio", "CAPITAL MEDIO", 5_000.0, 1.0, 5.0,
+                   "Riesgo 1% y máx. 5x: crecimiento sostenido sin exponer la cuenta."),
+    CapitalProfile("alto", "CAPITAL ALTO", float("inf"), 1.0, 10.0,
+                   "Riesgo 1% y máx. 10x: con capital alto el límite es la disciplina, no el apalancamiento."),
+)
+
+
+def get_profile(equity: float) -> CapitalProfile:
+    """Devuelve el perfil (bajo/medio/alto) que corresponde al capital."""
+    for prof in CAPITAL_PROFILES:
+        if equity <= prof.max_equity:
+            return prof
+    return CAPITAL_PROFILES[-1]
+
+
+# =============================================================================
 # Parámetros y resultados
 # =============================================================================
 @dataclass(frozen=True)
@@ -86,7 +119,9 @@ class TradePlan:
     size_unit: str  # "BTC", "contratos", "acciones"
     notional: float  # Valor total de la posición
     margin_required: float
-    leverage: float
+    leverage: float  # Apalancamiento APLICADO (ya limitado por perfil y liquidación)
+    requested_leverage: float  # Apalancamiento que pidió el usuario
+    profile: str  # Perfil de capital aplicado
     max_safe_leverage: float  # Apalancamiento máximo para que la liquidación no llegue antes del SL
     liquidation_price: float | None
     rr_tp1: float
@@ -239,10 +274,26 @@ class RiskManager:
         size, unit, notional, warnings = self.position_size(entry, stop, symbol, market, p)
 
         is_leveraged = market in ("crypto", "demo", "cme")
-        leverage = float(p.leverage) if market in ("crypto", "demo") else 1.0
+        safe_lev = self.max_safe_leverage(direction, entry, stop, p.maintenance_margin_rate)
+        profile = get_profile(p.equity)
+        requested_lev = float(p.leverage)
+        if market in ("crypto", "demo"):
+            # PROTECCIÓN ANTI-LIQUIDACIÓN: el apalancamiento aplicado nunca supera
+            # ni el tope del perfil de capital ni el que deja la liquidación DETRÁS del SL.
+            leverage = max(1.0, min(requested_lev, float(profile.max_leverage), safe_lev))
+            if leverage < requested_lev:
+                reasons = []
+                if requested_lev > profile.max_leverage:
+                    reasons.append(f"perfil {profile.label} (máx. {profile.max_leverage:g}x)")
+                if requested_lev > safe_lev:
+                    reasons.append(f"protección de liquidación (máx. {safe_lev:.0f}x con este SL)")
+                warnings.append(f"Apalancamiento ajustado de {requested_lev:g}x a {leverage:g}x: " + " y ".join(reasons) + ".")
+        else:
+            leverage = 1.0
+        if p.risk_pct > profile.risk_pct:
+            warnings.append(f"Perfil {profile.label}: riesgo recomendado {profile.risk_pct:g}% por operación (usas {p.risk_pct:g}%).")
         margin = notional / leverage if leverage > 0 else notional
         liq = self.liquidation_price(direction, entry, leverage, p.maintenance_margin_rate) if market in ("crypto", "demo") else None
-        safe_lev = self.max_safe_leverage(direction, entry, stop, p.maintenance_margin_rate)
         risk_amount = abs(entry - stop) * (notional / entry if entry else 0.0)
         fees = notional * p.taker_fee_pct / 100.0 * 2.0
         rr_unit = abs(entry - stop)
@@ -275,6 +326,8 @@ class RiskManager:
             notional=round(notional, 2),
             margin_required=round(margin, 2),
             leverage=leverage,
+            requested_leverage=requested_lev,
+            profile=profile.label,
             max_safe_leverage=safe_lev,
             liquidation_price=_round_price(liq) if liq else None,
             rr_tp1=p.tp1_rr,

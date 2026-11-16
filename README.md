@@ -15,12 +15,12 @@ Sistema de **análisis** de mercados para operar **futuros**: cripto (perpetuos 
 
 | Módulo | Detalle |
 |---|---|
-| **Datos** | CCXT (Binance → Bybit → OKX, con fallback automático a yfinance), yfinance para acciones/ETFs/CME, Open Interest y funding rate, modo Demo sin internet |
+| **Datos** | CCXT (Binance → Bybit → OKX, con fallback automático a yfinance), yfinance para acciones/ETFs/CME, Open Interest, funding rate y libro de órdenes (spread, desequilibrio, muros), modo Demo sin internet |
 | **Estructura SMC** | BOS, CHoCH, Order Blocks, Fair Value Gaps, soportes/resistencias, todo **causal** (sin mirar el futuro) |
 | **Indicadores** | EMA 9/21/50/200, ADX, SuperTrend, RSI, MACD, Stoch RSI, Bollinger, ATR, VWAP, Volume Profile (POC/VAH/VAL), volumen relativo, divergencias RSI/MACD, envolventes, doji, martillo |
 | **Score 0-100** | Suma ponderada de la confluencia según la estrategia. `<70` NO OPERAR · `70-85` esperar confirmación · `≥85` alta probabilidad + alerta |
 | **Estrategias** | Trend Following, Scalping Futuros, Mean Reversion y Auto (elige según temporalidad y ADX) |
-| **Riesgo** | SL = ATR×1.5 o bajo el Order Block · TP 1:2 y 1:3 · tamaño por % de riesgo · liquidación aprox. · contratos CME · filtro de noticias ±30 min · **kill switch** tras 3 pérdidas |
+| **Riesgo** | SL = ATR×1.5 o bajo el Order Block · TP 1:2 y 1:3 · tamaño por % de riesgo · liquidación aprox. · contratos CME · filtro de noticias ±30 min · **kill switch** tras 3 pérdidas · **perfiles de capital** (bajo/medio/alto) con tope de apalancamiento que mantiene la liquidación detrás del SL |
 | **Contexto** | VIX, dólar, bono 10y, S&P 500, inflación, tipos Fed, desempleo, curva de tipos (FRED), Fear & Greed, funding y titulares de Google News puntuados (económicos, políticos, sociales y culturales) |
 | **Interfaz** | Streamlit oscura y minimalista: gráfico estilo TradingView, tarjeta de señal, terminal de futuros tipo exchange, TradingView en vivo, backtest, historial y noticias |
 | **Backtest** | Motor nativo (mismas reglas que en vivo) y Backtrader con órdenes bracket |

@@ -230,3 +230,35 @@ def test_api_health_and_demo():
     assert client.get("/health").json()["status"] == "ok"
     r = client.get("/analyze", params={"symbol": "DEMO/USDT", "market": "demo", "timeframe": "4h"})
     assert r.status_code == 200 and r.json()["signal"]["direction"] in ("LONG", "SHORT", "NEUTRAL")
+
+
+# ------------------------------------------------- perfiles y microestructura
+def test_capital_profiles():
+    from engine.risk_manager import get_profile
+
+    assert get_profile(300).key == "bajo"
+    assert get_profile(2_000).key == "medio"
+    assert get_profile(50_000).key == "alto"
+
+
+def test_leverage_capped_by_profile_and_liquidation():
+    rm = RiskManager(RiskParams(equity=300, risk_pct=2.0, leverage=20, atr_mult=1.5, sl_method="atr"))
+    plan = rm.build_plan(1, entry=100.0, atr=2.0, symbol="BTC/USDT", market="crypto")
+    assert plan.requested_leverage == 20 and plan.leverage <= 3.0
+    assert any("Apalancamiento ajustado" in w for w in plan.warnings)
+    assert plan.liquidation_price < plan.stop_loss  # la liquidación queda DETRÁS del SL
+
+
+def test_orderbook_adjustment():
+    from engine.pipeline import orderbook_adjustment
+
+    ob = {"imbalance": 0.5, "spread_pct": 0.02, "wall": {"side": "bid", "ratio": 9}}
+    up, note = orderbook_adjustment(ob, 1)
+    down, _ = orderbook_adjustment(ob, -1)
+    assert up > 0 > down and "Libro" in note
+    assert orderbook_adjustment(None, 1) == (0.0, "")
+
+
+def test_demo_feed_has_order_book():
+    data = DataFeeder().get_market_data("DEMO/USDT", "demo", "1h", limit=300)
+    assert data.order_book is not None and -1 <= data.order_book["imbalance"] <= 1

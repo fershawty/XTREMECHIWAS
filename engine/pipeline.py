@@ -42,6 +42,33 @@ from strategies import AUTO_KEY, auto_select, get_strategy
 log = get_logger("pipeline")
 
 
+def orderbook_adjustment(ob: dict | None, direction: int, max_points: float = 4.0) -> tuple[float, str]:
+    """
+    Microestructura -> ajuste pequeño y transparente del score (máx. ±4 puntos):
+    * desequilibrio de volumen a favor de la dirección: hasta ±3
+    * muro institucional a favor (+1) o en contra (-1.5)
+    * spread alto (> 0.08%): -1 (ejecución cara)
+    """
+    if not ob or direction == 0:
+        return 0.0, ""
+    pts, parts = 0.0, []
+    imb = ob.get("imbalance")
+    if imb is not None:
+        pts += float(np.clip(imb, -1.0, 1.0)) * direction * 3.0
+        parts.append(f"desequilibrio {imb:+.0%}")
+    wall = ob.get("wall")
+    if wall:
+        favor = 1 if wall.get("side") == "bid" else -1
+        pts += 1.0 if favor == direction else -1.5
+        parts.append(f"muro de {'compra' if favor == 1 else 'venta'} x{wall.get('ratio', 0):.0f}")
+    spread = ob.get("spread_pct")
+    if spread is not None and spread > 0.08:
+        pts -= 1.0
+        parts.append(f"spread {spread:.2f}%")
+    pts = float(np.clip(pts, -max_points, max_points))
+    return round(pts, 1), f"Libro de órdenes {pts:+.1f}: " + ", ".join(parts)
+
+
 @dataclass
 class AnalysisRequest:
     """Parámetros de un análisis (lo que el usuario elige en la UI)."""
@@ -116,6 +143,7 @@ class AnalysisResult:
                 "timeframe": md.timeframe, "source": md.source, "is_futures": md.is_futures,
                 "contract": md.contract, "last_price": md.last_price, "change_pct": round(md.change_pct, 3),
                 "last_bar_time": md.last_bar_time.isoformat(), "bars": len(md.df), "funding_rate": md.funding_rate,
+                "order_book": md.order_book,
             },
             "strategy": {"key": self.strategy_key, "name": self.strategy_name, "note": self.strategy_note},
             "signal": self.signal.to_dict() if self.signal else None,
@@ -205,15 +233,24 @@ class AnalysisPipeline:
         result.df, result.structure, result.signal = scored, structure, signal
         result.strategy_key, result.strategy_name, result.strategy_note = strategy.key, strategy.name, note
 
-        # 6) Contexto
+        # 6) Contexto macro + microestructura (libro de órdenes)
+        adjust, notes = 0.0, []
         if req.use_context and self.settings.context_enabled:
             try:
                 ctx = self.context.analyze(req.symbol, data.market.value, data.funding_rate)
                 result.context = ctx
                 points, ctx_note = ctx.adjustment_for(signal.dir_int, self.settings.context_max_adjust)
-                signal.apply_context(points, ctx_note, self.settings.score_valid, self.settings.score_alert)
+                adjust += points
+                notes.append(ctx_note)
             except Exception as exc:  # noqa: BLE001
                 result.warnings.append(f"Contexto no disponible: {exc}")
+        ob_points, ob_note = orderbook_adjustment(data.order_book, signal.dir_int)
+        if ob_note:
+            adjust += ob_points
+            notes.append(ob_note)
+        if signal.dir_int != 0 and notes:
+            signal.apply_context(round(adjust, 1), " · ".join(notes),
+                                 self.settings.score_valid, self.settings.score_alert)
 
         # 7) Riesgo
         try:

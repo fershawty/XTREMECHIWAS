@@ -27,6 +27,7 @@ from engine.backtester import Backtester, BacktestConfig  # noqa: E402
 from engine.config import APP_NAME, BUILD_TAG, SETTINGS  # noqa: E402
 from engine.data_feeder import MARKET_LABELS, SYMBOL_PRESETS, TIMEFRAMES, Market  # noqa: E402
 from engine.pipeline import AnalysisPipeline, AnalysisRequest, AnalysisResult  # noqa: E402
+from engine.risk_manager import get_profile  # noqa: E402
 from strategies import AUTO_KEY, STRATEGIES  # noqa: E402
 from ui import components as ui  # noqa: E402
 
@@ -114,6 +115,9 @@ def sidebar() -> tuple[AnalysisRequest, dict, bool]:
         with st.expander("Gestión de riesgo"):
             equity = st.number_input("Capital (USDT / USD)", min_value=10.0, value=float(SETTINGS.account_equity),
                                      step=100.0, key="equity")
+            prof = get_profile(equity)
+            st.caption(f"Perfil {prof.label}: riesgo sugerido {prof.risk_pct:g}% · apalancamiento máx. "
+                       f"{prof.max_leverage:g}x. {prof.note} El plan lo aplica automáticamente.")
             risk_pct = st.number_input("Riesgo por operación (%)", min_value=0.1, max_value=5.0,
                                        value=float(SETTINGS.risk_per_trade_pct), step=0.1, key="risk_pct")
             leverage = st.slider("Apalancamiento", 1, 50, int(SETTINGS.default_leverage), key="leverage")
