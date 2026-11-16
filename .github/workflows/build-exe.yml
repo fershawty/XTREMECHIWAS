@@ -112,6 +112,12 @@ jobs:
         run: $PY -m pip install -r requirements.txt pyinstaller==6.22.3
       - name: Verificar Tcl/Tk (ventana de arranque)
         run: $PY -c "import tkinter; t = tkinter.Tcl(); print('Tcl', t.eval('info patchlevel'), t.eval('info library'))"
+      # Homebrew del servidor trae OpenSSL compilada para macOS 15 en /usr/local/lib:
+      # se desvincula para que PyInstaller use la del Python oficial (compatible con Sonoma).
+      - name: Aislar OpenSSL de Homebrew
+        run: |
+          for f in openssl@3 openssl@1.1 openssl; do brew unlink "$f" 2>/dev/null || true; done
+          sudo rm -rf /usr/local/lib/ossl-modules /usr/local/lib/libcrypto* /usr/local/lib/libssl* 2>/dev/null || true
       - name: Compilar
         run: $PY -m PyInstaller futures_scope.spec --noconfirm
       - name: Comprobar Tcl/Tk empaquetado y compatibilidad con Sonoma (macOS 14)
