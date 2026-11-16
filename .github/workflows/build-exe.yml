@@ -117,7 +117,13 @@ jobs:
           sudo rm -rf /usr/local/lib/ossl-modules /usr/local/lib/libcrypto* /usr/local/lib/libssl* /usr/local/opt/openssl* 2>/dev/null || true
       - name: Instalar dependencias + PyInstaller
         run: |
-          $PY -m pip install -r requirements.txt pyinstaller==6.22.3 2>&1 | tee pip.log
+          # ccxt fija cryptography 50, que no tiene binario para Mac Intel: se instala ccxt sin
+          # dependencias y se usa cryptography 48.0.1 (última con binario Intel, API compatible).
+          grep -v '^ccxt' requirements.txt > req-mac.txt
+          $PY -m pip install -r req-mac.txt pyinstaller==6.22.3 2>&1 | tee pip.log
+          $PY -m pip install --no-deps ccxt==4.5.92
+          $PY -m pip install "cryptography==48.0.1" typing_extensions aiohttp yarl orjson coincurve 2>&1 | tee -a pip.log
+          $PY -c "import ccxt, cryptography; print('ccxt', ccxt.__version__, '· cryptography', cryptography.__version__)"
           echo "--- Paquetes compilados desde código fuente (si hay):"
           grep -iE "Building wheel for|Building wheels for" pip.log || echo "ninguno"
       - name: Verificar Tcl/Tk (ventana de arranque)
