@@ -98,8 +98,8 @@ if sys.platform == "darwin":
         info_plist={
             "CFBundleName": "FGView",
             "CFBundleDisplayName": "FG VIEW",
-            "CFBundleShortVersionString": "3.1.0",
-            "CFBundleVersion": "3.1.0",
+            "CFBundleShortVersionString": "3.2.0",
+            "CFBundleVersion": "3.2.0",
             "LSMinimumSystemVersion": "12.0",
             "NSHighResolutionCapable": True,
             "NSHumanReadableCopyright": "FG VIEW V1 · BY GUS X FER",

@@ -416,3 +416,22 @@ def test_easy_scan_demo():
     s = plain_summary(cands[0])
     assert s["headline"] and len(s["steps"]) == 7 and "Stop Loss" in s["loss"]
     assert "Liquidación" in GLOSSARY and "Apalancamiento (x)" in GLOSSARY
+
+
+# ---------------------------------------------------------------- reto escalera
+def test_ladder_never_liquidates_and_beats_classic():
+    from engine.ladder import LadderConfig, plan_ladder
+
+    r = plan_ladder(LadderConfig(capital=20, target=200, coin="SOL", win_rate=70))
+    assert r.liq_pct >= 3 * r.sl_pct  # la liquidación queda >= 3× más lejos que el SL
+    assert -0.15 < r.roi_loss < 0  # perder un escalón cuesta poco, nunca el 100 %
+    assert r.sim_protected["ruin_pct"] < r.sim_classic["ruin_pct"]
+    assert r.sim_protected["success_pct"] > r.sim_classic["success_pct"]
+    assert r.steps[-1].total_after_win >= 200 and r.steps[0].stake == 20
+
+
+def test_ladder_warns_without_edge():
+    from engine.ladder import LadderConfig, plan_ladder
+
+    r = plan_ladder(LadderConfig(capital=20, target=100, coin="BTC", win_rate=35))
+    assert r.notes and "ventaja" in r.notes[0]

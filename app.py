@@ -37,6 +37,7 @@ from ui import components as ui  # noqa: E402
 from ui.simulator_tab import render_simulator  # noqa: E402
 from ui.fgview_tab import render_fgview, render_journal  # noqa: E402
 from ui.easy_tab import render_easy, render_glossary  # noqa: E402
+from ui.ladder_tab import render_ladder  # noqa: E402
 
 ui.load_css()
 
@@ -244,30 +245,32 @@ def main_panel(req: AnalysisRequest, layers: dict) -> None:
         ui.render_signal_card(result)
         ui.render_kpis(result)
 
-    tabs = st.tabs(["✨ Modo fácil", "🟡 FG VIEW", "Simulador", "Bitácora", "Desglose", "Terminal futuros",
-                    "Contexto", "TradingView en vivo", "Backtest", "Historial", "Noticias"])
+    tabs = st.tabs(["✨ Modo fácil", "📈 Crecimiento exponencial", "🟡 FG VIEW", "Simulador", "Bitácora", "Desglose",
+                    "Terminal futuros", "Contexto", "TradingView en vivo", "Backtest", "Historial", "Noticias"])
     with tabs[0]:
         render_easy(get_pipeline(), req)
     with tabs[1]:
+        render_ladder(get_pipeline().db)
+    with tabs[2]:
         render_fgview(get_pipeline(), req)
         render_glossary("fg")
-    with tabs[2]:
-        render_simulator(simulator_prefill(result, req))
     with tabs[3]:
-        render_journal(get_pipeline().db)
+        render_simulator(simulator_prefill(result, req))
     with tabs[4]:
-        ui.render_factors(result)
+        render_journal(get_pipeline().db)
     with tabs[5]:
-        ui.render_trade_terminal(result, on_journal=journal_callback(pipeline, result))
+        ui.render_factors(result)
     with tabs[6]:
-        ui.render_context(result.context)
+        ui.render_trade_terminal(result, on_journal=journal_callback(pipeline, result))
     with tabs[7]:
-        ui.render_tradingview_widget(req.symbol, req.market, req.timeframe, req.contract, req.exchange)
+        ui.render_context(result.context)
     with tabs[8]:
-        render_backtest_tab(pipeline, result, req)
+        ui.render_tradingview_widget(req.symbol, req.market, req.timeframe, req.contract, req.exchange)
     with tabs[9]:
-        ui.render_history(pipeline.db, pipeline.risk)
+        render_backtest_tab(pipeline, result, req)
     with tabs[10]:
+        ui.render_history(pipeline.db, pipeline.risk)
+    with tabs[11]:
         ui.render_news(pipeline.news, result.risk_check)
     ui.render_footer()
 

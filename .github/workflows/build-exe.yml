@@ -231,6 +231,7 @@ jobs:
           - **Mac Intel (macOS 12 Monterey o superior)**: `FGView-V1-macOS-Intel.dmg` → arrastra a Aplicaciones; la primera vez Control + clic → Abrir
 
           **Novedades**
+          - 📈 Crecimiento exponencial: reto escalera SIN liquidaciones (liquidación ≥ 3× más lejos que el SL, caja fuerte, freno tras 2 pérdidas) y comparación con la escalera clásica por Monte Carlo.
           - ✨ Modo fácil: solo pones tu capital y te dice la operación más recomendada en palabras simples, con probabilidad histórica, semáforo y pasos en Binance. Glosario de términos.
           - Mac compatible desde macOS 12 Monterey.
           - Pestaña 🟡 FG VIEW: plan por capital (riesgo y margen máximo), niveles A/B/C, SL dinámico por ATR con TPs escalados, apalancamiento automático con liquidación ≥ 3× el SL, 6 filtros + bloqueos y confianza 0–100.

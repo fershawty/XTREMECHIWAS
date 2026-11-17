@@ -13,6 +13,10 @@ Sistema de **análisis** de mercados para operar **futuros**: cripto (perpetuos 
 
 ---
 
+## 📈 Crecimiento exponencial (v3.2)
+
+Reto escalera **sin liquidaciones**: cada escalón usa margen aislado y un apalancamiento limitado para que la liquidación quede ≥ 3× más lejos que el Stop Loss (perder un escalón cuesta ~−8 %, nunca el 100 %). Una parte de cada ganancia va a una **caja fuerte** que ya no se arriesga y, tras 2 pérdidas seguidas, se arriesga la mitad. Compara con Monte Carlo la escalera **protegida** contra la **clásica** (todo dentro): probabilidad de llegar al objetivo, de quemar la cuenta y operaciones necesarias, con tu % de aciertos de la Bitácora.
+
 ## ✨ Modo fácil (v3.1)
 
 Pones **solo tu capital** y pulsas **Buscar la mejor operación ahora**. FG VIEW revisa las criptos más líquidas y te dice en palabras simples qué hacer, cuánto poner, con qué apalancamiento, dónde ganar y dónde cortar pérdidas, con semáforo 🟢 entrar · 🟡 esperar · 🔴 no operar.
