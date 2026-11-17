@@ -3,7 +3,7 @@ strategies/base.py
 ==================
 Clase base de todas las estrategias.
 
-Una estrategia en FUTURES-SCOPE NO calcula indicadores (eso lo hace engine/), solo
+Una estrategia en FG VIEW NO calcula indicadores (eso lo hace engine/), solo
 define DOS cosas, lo que la hace muy fácil de modificar:
 
 1. `weights`: cuánto pesa cada factor de confluencia en el score 0-100.

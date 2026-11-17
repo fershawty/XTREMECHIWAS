@@ -37,6 +37,23 @@ from dataclasses import dataclass, field
 import numpy as np
 
 MAINTENANCE_MARGIN = 0.005  # 0.5 % (aproximación de margen aislado)
+
+# Riesgo por operación según capital (FG VIEW): (capital máximo, riesgo %, margen máximo % del capital)
+BUDGET_TABLE: tuple[tuple[float, float, float], ...] = (
+    (100.0, 2.0, 30.0),
+    (500.0, 1.5, 25.0),
+    (2_000.0, 1.0, 20.0),
+    (10_000.0, 0.75, 15.0),
+    (float("inf"), 0.5, 10.0),
+)
+
+
+def budget_rule(capital: float) -> tuple[float, float]:
+    """(riesgo %, margen máximo %) recomendados según el capital."""
+    for max_cap, risk, margin in BUDGET_TABLE:
+        if capital <= max_cap:
+            return risk, margin
+    return BUDGET_TABLE[-1][1], BUDGET_TABLE[-1][2]
 DEFAULT_FEE = 0.0005  # 0.05 % taker por lado
 DISCLAIMER = "Simulación educativa, no es asesoría financiera."
 
@@ -304,7 +321,7 @@ def simulate(inp: SimInput) -> SimResult:
                           "Cuenta": ex.account_pct, "Liquidado": _crosses_liq(d, price, liq)})
 
     lev_table = []
-    for lev in (5, 10, 20, 50):
+    for lev in (3, 5, 10, 20, 50):
         _, m_lev, n_lev = _position(inp, lev)
         liq_lev = liquidation_price(d, e, lev)
         fees_lev = n_lev * inp.fee * 2.0
@@ -332,8 +349,12 @@ def risk_alerts(r: SimResult) -> list[str]:
         alerts.append(f"Te liquidan ANTES de tocar el SL (liquidación {fmt_px(r.liquidation)}). "
                       f"Baja el apalancamiento a ≤ {safe}x o acerca el SL.")
     loss_pct = abs(r.sl.account_pct) if r.sl.pnl_net < 0 else 0.0
-    if loss_pct > 2.0:
-        alerts.append(f"Riesgo alto: en el SL pierdes el {loss_pct:.2f}% de tu capital (máximo recomendado 2%).")
+    max_risk, max_margin = budget_rule(inp.capital)
+    if loss_pct > max_risk + 1e-9:
+        alerts.append(f"Riesgo alto: en el SL pierdes el {loss_pct:.2f}% de tu capital (máximo para "
+                      f"{fmt_usd(inp.capital)}: {max_risk:g}%).")
+    if r.margin > inp.capital * max_margin / 100 + 1e-9 and r.margin <= inp.capital:
+        alerts.append(f"El margen ({fmt_usd(r.margin)}) supera el {max_margin:g}% del capital recomendado para tu cuenta.")
     if math.isfinite(r.rr) and r.rr < 1.5:
         alerts.append(f"R:R de 1:{r.rr:.2f}: la operación no compensa el riesgo (mínimo recomendado 1:1.5).")
     if coin in MEMECOINS and inp.leverage > 10:

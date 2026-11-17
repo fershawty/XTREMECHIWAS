@@ -1,7 +1,7 @@
 """
 engine/config.py
 ================
-Configuración central de FUTURES-SCOPE.
+Configuración central de FG VIEW.
 
 Lee las variables del archivo `.env` (vía python-dotenv) y las expone en un único
 objeto inmutable `SETTINGS`. Si una variable no existe o tiene un valor inválido,
@@ -24,9 +24,11 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 # --- Marca / versión (cámbialo aquí y se actualiza en la app y el .exe) -------
-APP_NAME = "FUTURES-SCOPE"
-APP_VERSION = "2.0.0"
-BUILD_TAG = "BUILD 2 · GUS X SHAWTY X ALFREDOBONUS"
+APP_NAME = "FG VIEW"
+APP_VERSION = "3.0.0"
+BUILD_TAG = "V1 · BY GUS X FER"
+APP_TITLE = f"{APP_NAME} {BUILD_TAG.split(' · ')[0]}"  # "FG VIEW V1"
+APP_CREDITS = "BY GUS X FER"
 
 # --- Rutas ---------------------------------------------------------------------
 # BASE_DIR: donde está el código (en el .exe es la carpeta interna del paquete).
@@ -36,7 +38,7 @@ BASE_DIR: Path = Path(__file__).resolve().parent.parent
 if IS_FROZEN and sys.platform == "darwin":
     # En macOS la .app puede ejecutarse desde una ubicación de solo lectura (App Translocation):
     # los datos van a la carpeta estándar del usuario.
-    APP_HOME: Path = Path.home() / "Library" / "Application Support" / "FuturesScope"
+    APP_HOME: Path = Path.home() / "Library" / "Application Support" / "FGView"
 elif IS_FROZEN:
     APP_HOME = Path(sys.executable).resolve().parent  # Windows: junto al .exe
 else:

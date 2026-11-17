@@ -18,6 +18,8 @@ Funciones principales:
 
 from __future__ import annotations
 
+import base64
+import functools
 import html
 import json
 import math
@@ -36,9 +38,9 @@ from engine.config import APP_NAME, BUILD_TAG, SETTINGS
 CSS_PATH = Path(__file__).with_name("styles.css")
 
 C = {
-    "bg": "#0E1117", "panel": "#12161F", "grid": "#161B26", "line": "#1F2633", "text": "#E6EDF3",
-    "muted": "#7D8590", "faint": "#4A5361", "long": "#00FF88", "short": "#FF3B30",
-    "ema50": "#F5C542", "ema200": "#4DA3FF", "vwap": "#B98CFF", "st": "#8B949E",
+    "bg": "#0A0A0A", "panel": "#141414", "grid": "#1A1712", "line": "#2A2418", "text": "#F5F1E6",
+    "muted": "#A89F8A", "faint": "#6B6352", "long": "#3FB950", "short": "#F85149",
+    "ema50": "#F2D27A", "ema200": "#D4AF37", "vwap": "#F5F1E6", "st": "#A89F8A", "gold": "#D4AF37",
 }
 
 DEFAULT_LAYERS = {
@@ -129,10 +131,28 @@ def render_header(result=None) -> None:
         chips.append(f'<span class="fs-chip">{md.last_bar_time.strftime("%d %b %H:%M")} UTC</span>')
         chips.append(f'<span class="fs-chip">{result.elapsed_ms:.0f} ms</span>')
     _html(
-        f'<div class="fs-header"><div class="fs-brand"><span class="fs-logo-dot"></span>'
-        f'<span class="fs-logo">{APP_NAME}</span><span class="fs-build">{esc(BUILD_TAG)}</span></div>'
+        f'<div class="fs-header"><div class="fs-brand">{logo_img()}'
+        f'<div><div class="fs-logo">{APP_NAME}</div><div class="fs-credit">{esc(BUILD_TAG)}</div></div></div>'
         f'{quote}<div class="fs-chips">{"".join(chips)}</div></div>'
     )
+
+
+@functools.lru_cache(maxsize=1)
+def _logo_data_uri() -> str:
+    """Portada (assets/logo.png) incrustada en base64."""
+    path = Path(__file__).resolve().parent.parent / "assets" / "logo.png"
+    try:
+        return "data:image/png;base64," + base64.b64encode(path.read_bytes()).decode()
+    except OSError:
+        return ""
+
+
+def logo_img(small: bool = False) -> str:
+    """<img> circular con borde dorado (o el punto dorado si falta el archivo)."""
+    uri = _logo_data_uri()
+    if not uri:
+        return '<span class="fs-logo-dot"></span>'
+    return f'<img class="fs-avatar{" small" if small else ""}" src="{uri}" alt="FG VIEW">'
 
 
 def render_banners(messages: list[str], kind: str = "warn") -> None:
@@ -216,7 +236,7 @@ def build_price_chart(result, layers: dict | None = None, bars: int = 220, heigh
     if layers["fvg"] and st_res:
         zone_specs += [(z, "FVG", 0.07) for d in (1, -1) for z in st_res.active_zones("FVG", d, limit=3)]
     for z, label, alpha in zone_specs:
-        rgb = "0,255,136" if z.direction == 1 else "255,59,48"
+        rgb = "63,185,80" if z.direction == 1 else "248,81,73"
         fig.add_shape(type="rect", x0=zx(z.origin_idx), x1=last_x, y0=z.bottom, y1=z.top, xref="x", yref="y",
                       fillcolor=f"rgba({rgb},{alpha})", line=dict(width=0 if label == "OB" else 1,
                       color=f"rgba({rgb},0.25)", dash="dot"), layer="below")
@@ -240,7 +260,7 @@ def build_price_chart(result, layers: dict | None = None, bars: int = 220, heigh
         for lv in st_res.key_levels:
             if lv.touches < 2:
                 continue
-            color = "rgba(0,255,136,0.35)" if lv.kind == "support" else "rgba(255,59,48,0.35)"
+            color = "rgba(63,185,80,0.35)" if lv.kind == "support" else "rgba(248,81,73,0.35)"
             fig.add_hline(y=lv.price, line=dict(color=color, width=1, dash="dash"), row=1, col=1)
 
     if layers["volume_profile"] and "vp_poc" in df.columns:
@@ -289,7 +309,7 @@ def build_price_chart(result, layers: dict | None = None, bars: int = 220, heigh
     fig.add_hline(y=last_close, line=dict(color=last_color, width=1, dash="dot"), opacity=0.6, row=1, col=1)
 
     # --- Volumen ---
-    vol_colors = np.where(df["close"] >= df["open"], "rgba(0,255,136,0.45)", "rgba(255,59,48,0.45)")
+    vol_colors = np.where(df["close"] >= df["open"], "rgba(63,185,80,0.45)", "rgba(248,81,73,0.45)")
     fig.add_trace(go.Bar(x=x, y=df["volume"], marker_color=vol_colors, name="Volumen", showlegend=False,
                          hovertemplate="Vol %{y:,.0f}<extra></extra>"), row=2, col=1)
 
@@ -505,7 +525,7 @@ def render_trade_terminal(result, on_journal=None) -> None:
             render_banners(["Score por debajo de 70 o señal bloqueada: la orden es solo referencial."])
         if on_journal is not None and st.button("Registrar en el diario", key="journal_btn", width="stretch"):
             on_journal()
-    _html('<div class="fs-sub">FUTURES-SCOPE no ejecuta órdenes. Revisa siempre el tamaño mínimo y las comisiones de tu exchange.</div>')
+    _html('<div class="fs-sub">FG VIEW no ejecuta órdenes. Revisa siempre el tamaño mínimo y las comisiones de tu exchange.</div>')
 
 
 # =============================================================================
@@ -629,7 +649,7 @@ def render_tradingview_widget(symbol: str, market: str, timeframe: str, contract
 def equity_chart(equity: pd.Series, height: int = 260) -> go.Figure:
     """Curva de capital minimalista."""
     fig = go.Figure(go.Scatter(x=equity.index, y=equity.values, mode="lines", line=dict(color=C["long"], width=1.6),
-                               fill="tozeroy", fillcolor="rgba(0,255,136,0.06)", hovertemplate="%{y:,.2f}<extra></extra>"))
+                               fill="tozeroy", fillcolor="rgba(63,185,80,0.06)", hovertemplate="%{y:,.2f}<extra></extra>"))
     lo, hi = float(equity.min()), float(equity.max())
     pad = (hi - lo) * 0.1 or hi * 0.01
     fig.update_layout(height=height, margin=dict(l=8, r=8, t=6, b=6), paper_bgcolor=C["bg"], plot_bgcolor=C["bg"],

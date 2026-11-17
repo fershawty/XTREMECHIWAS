@@ -1,1 +1,1 @@
-"""Tests y backtesting de FUTURES-SCOPE."""
+"""Tests y backtesting de FG VIEW."""

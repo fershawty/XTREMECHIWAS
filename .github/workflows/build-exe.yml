@@ -1,6 +1,6 @@
-# Compila FuturesScope.exe en un servidor Windows de GitHub en cada push.
-# Descarga: pestaña "Actions" del repositorio -> última ejecución verde -> "Artifacts" -> FuturesScope-Windows
-name: Build FuturesScope.exe
+# Compila FGView.exe en un servidor Windows de GitHub en cada push.
+# Descarga: pestaña "Actions" del repositorio -> última ejecución verde -> "Artifacts" -> FGView-Windows
+name: Build FGView.exe
 
 on:
   push:
@@ -63,23 +63,23 @@ jobs:
         shell: pwsh
         run: |
           foreach ($d in "_tcl_data", "_tk_data") {
-            $p = "dist\FuturesScope\_internal\$d"
+            $p = "dist\FGView\_internal\$d"
             if (-not (Test-Path $p)) { Write-Error "Falta $p en el paquete"; exit 1 }
             "{0}: {1} archivos" -f $d, (Get-ChildItem $p -Recurse -File).Count
           }
       - name: Autotest del ejecutable
         shell: pwsh
         run: |
-          $p = Start-Process -FilePath "dist\FuturesScope\FuturesScope.exe" -ArgumentList "--selftest" -Wait -PassThru
-          Get-Content "dist\FuturesScope\data\selftest.txt" -ErrorAction SilentlyContinue
-          Get-Content "dist\FuturesScope\data\launcher.log" -Tail 40 -ErrorAction SilentlyContinue
+          $p = Start-Process -FilePath "dist\FGView\FGView.exe" -ArgumentList "--selftest" -Wait -PassThru
+          Get-Content "dist\FGView\data\selftest.txt" -ErrorAction SilentlyContinue
+          Get-Content "dist\FGView\data\launcher.log" -Tail 40 -ErrorAction SilentlyContinue
           if ($p.ExitCode -ne 0) { Write-Error "El autotest del .exe falló"; exit 1 }
           # Entregamos la carpeta limpia (los datos y el .env se crean en el primer arranque del usuario)
-          Remove-Item -Recurse -Force "dist\FuturesScope\data", "dist\FuturesScope\.env" -ErrorAction SilentlyContinue
-      # Se sube la carpeta tal cual: GitHub la entrega en UN solo .zip con FuturesScope/ dentro
+          Remove-Item -Recurse -Force "dist\FGView\data", "dist\FGView\.env" -ErrorAction SilentlyContinue
+      # Se sube la carpeta tal cual: GitHub la entrega en UN solo .zip con FGView/ dentro
       - uses: actions/upload-artifact@v4
         with:
-          name: FuturesScope-Windows
+          name: FGView-Windows
           path: dist/
           retention-days: 30
 
@@ -132,7 +132,7 @@ jobs:
         run: $PY -m PyInstaller futures_scope.spec --noconfirm
       - name: Comprobar Tcl/Tk empaquetado y compatibilidad con Sonoma (macOS 14)
         run: |
-          APP=dist/FuturesScope.app/Contents
+          APP=dist/FGView.app/Contents
           test -f $APP/Frameworks/_tcl_data/init.tcl || test -f $APP/Resources/_tcl_data/init.tcl || { echo "Falta _tcl_data"; exit 1; }
           test -f $APP/Frameworks/_tk_data/tk.tcl || test -f $APP/Resources/_tk_data/tk.tcl || { echo "Falta _tk_data"; exit 1; }
           echo "Tcl/Tk empaquetado OK"
@@ -140,7 +140,7 @@ jobs:
           import pathlib, re, subprocess, sys
           MAGIC = {b"\xcf\xfa\xed\xfe", b"\xce\xfa\xed\xfe", b"\xca\xfe\xba\xbe", b"\xfe\xed\xfa\xcf"}
           worst, worst_file, count, bad = (0, 0), "", 0, []
-          for p in pathlib.Path("dist/FuturesScope.app").rglob("*"):
+          for p in pathlib.Path("dist/FGView.app").rglob("*"):
               if p.is_symlink() or not p.is_file():
                   continue
               with open(p, "rb") as fh:
@@ -166,7 +166,7 @@ jobs:
               print("  exige más que Sonoma:", b)
           if bad:
               print("--- Binarios que enlazan libcrypto/libssl:")
-              for p in pathlib.Path("dist/FuturesScope.app").rglob("*.so"):
+              for p in pathlib.Path("dist/FGView.app").rglob("*.so"):
                   deps = subprocess.run(["otool", "-L", str(p)], capture_output=True, text=True).stdout
                   hits = [l.strip() for l in deps.splitlines()[1:] if "libcrypto" in l or "libssl" in l]
                   if hits:
@@ -175,20 +175,20 @@ jobs:
           PY
       - name: Autotest de la app
         run: |
-          dist/FuturesScope.app/Contents/MacOS/FuturesScope --selftest
-          cat "$HOME/Library/Application Support/FuturesScope/data/selftest.txt" || true
+          dist/FGView.app/Contents/MacOS/FGView --selftest
+          cat "$HOME/Library/Application Support/FGView/data/selftest.txt" || true
       - name: Crear .dmg
         run: |
           mkdir dmg
-          ditto dist/FuturesScope.app dmg/FuturesScope.app
+          ditto dist/FGView.app dmg/FGView.app
           ln -s /Applications dmg/Aplicaciones
           for i in 1 2 3; do
-            hdiutil create -volname "FUTURES-SCOPE" -srcfolder dmg -ov -format UDZO "FuturesScope-macOS-${{ matrix.arch }}.dmg" && break
+            hdiutil create -volname "FG VIEW" -srcfolder dmg -ov -format UDZO "FGView-macOS-${{ matrix.arch }}.dmg" && break
             sleep 5
           done
           ls -lh *.dmg
       - uses: actions/upload-artifact@v4
         with:
-          name: FuturesScope-macOS-${{ matrix.arch }}
-          path: FuturesScope-macOS-${{ matrix.arch }}.dmg
+          name: FGView-macOS-${{ matrix.arch }}
+          path: FGView-macOS-${{ matrix.arch }}.dmg
           retention-days: 30

@@ -75,15 +75,15 @@ def _projection_chart(bands, capital: float) -> go.Figure:
     x = list(range(bands.shape[1]))
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=x, y=bands[2], line=dict(width=0), showlegend=False, hoverinfo="skip"))
-    fig.add_trace(go.Scatter(x=x, y=bands[0], fill="tonexty", fillcolor="rgba(0,255,136,0.10)", line=dict(width=0),
+    fig.add_trace(go.Scatter(x=x, y=bands[0], fill="tonexty", fillcolor="rgba(212,175,55,0.12)", line=dict(width=0),
                              name="Rango 10 %–90 %", hoverinfo="skip"))
-    fig.add_trace(go.Scatter(x=x, y=bands[1], line=dict(color="#00FF88", width=2), name="Esperado",
+    fig.add_trace(go.Scatter(x=x, y=bands[1], line=dict(color="#D4AF37", width=2), name="Esperado",
                              hovertemplate="Operación %{x}: $%{y:,.2f}<extra></extra>"))
-    fig.add_hline(y=capital, line=dict(color="#4A5361", dash="dot"))
-    fig.update_layout(height=280, margin=dict(l=8, r=8, t=8, b=8), paper_bgcolor="#0E1117", plot_bgcolor="#0E1117",
-                      font=dict(color="#7D8590", size=10), legend=dict(orientation="h", y=1.08),
-                      xaxis=dict(title="Operaciones", gridcolor="#161B26"),
-                      yaxis=dict(gridcolor="#161B26", side="right", tickprefix="$"))
+    fig.add_hline(y=capital, line=dict(color="#6B6352", dash="dot"))
+    fig.update_layout(height=280, margin=dict(l=8, r=8, t=8, b=8), paper_bgcolor="#0A0A0A", plot_bgcolor="#0A0A0A",
+                      font=dict(color="#A89F8A", size=10), legend=dict(orientation="h", y=1.08),
+                      xaxis=dict(title="Operaciones", gridcolor="#1A1712"),
+                      yaxis=dict(gridcolor="#1A1712", side="right", tickprefix="$"))
     return fig
 
 
@@ -167,7 +167,15 @@ def render_simulator(prefill: dict | None = None) -> None:
         st.warning(str(exc))
         return
 
-    st.markdown(format_report(res))
+    left, right = st.columns([1.7, 1], gap="large")
+    left.markdown(format_report(res))
+    with right:
+        from ui.fgview_tab import GOLD_LIGHT, GREEN, RED, price_ladder
+
+        levels = [("LIQUIDACIÓN", res.liquidation, RED), ("SL", res.sl.price, RED), ("ENTRADA", entry, "#F5F1E6"),
+                  ("BREAK-EVEN", res.break_even, "#A89F8A")]
+        levels += [(t.label, t.price, GREEN if i < len(res.tps) else GOLD_LIGHT) for i, t in enumerate(res.tps, 1)]
+        st.plotly_chart(price_ladder(levels, entry), width="stretch", config={"displayModeBar": False}, key="sim_ladder")
 
     # --- Proyección de varias operaciones ---
     with st.expander("🧮 Proyección de varias operaciones (interés compuesto)"):

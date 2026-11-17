@@ -1,10 +1,10 @@
 @echo off
 REM ==========================================================================
-REM  FUTURES-SCOPE - Arranque con doble clic en Windows
+REM  FG VIEW - Arranque con doble clic en Windows
 REM  La primera vez crea el entorno e instala dependencias (unos minutos).
 REM ==========================================================================
 chcp 65001 >nul
-title FUTURES-SCOPE
+title FG VIEW
 cd /d "%~dp0"
 
 where python >nul 2>nul
@@ -33,5 +33,5 @@ if not exist ".venv\Scripts\python.exe" (
 
 if not exist ".env" copy ".env.example" ".env" >nul
 
-REM pythonw = sin ventana de consola: se abre la ventana de arranque de FUTURES-SCOPE
+REM pythonw = sin ventana de consola: se abre la ventana de arranque de FG VIEW
 start "" ".venv\Scripts\pythonw.exe" launcher.py

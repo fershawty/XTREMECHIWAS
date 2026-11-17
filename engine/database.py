@@ -65,6 +65,23 @@ CREATE TABLE IF NOT EXISTS bot_state (
     updated_at TEXT
 );
 
+CREATE TABLE IF NOT EXISTS journal (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    opened_at    TEXT NOT NULL,          -- fecha/hora de entrada (UTC ISO)
+    coin         TEXT NOT NULL,
+    direction    TEXT NOT NULL,
+    entry        REAL,
+    exit_price   REAL,
+    leverage     REAL,
+    margin       REAL,
+    pnl          REAL,                   -- PnL neto en USDT
+    result       TEXT,                   -- WIN | LOSS | BE
+    score        REAL,                   -- confianza FG VIEW 0-100
+    filters      TEXT,                   -- JSON {filtro: true/false}
+    duration_min REAL,
+    notes        TEXT
+);
+
 CREATE TABLE IF NOT EXISTS backtests (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     created_at    TEXT NOT NULL,
@@ -229,3 +246,38 @@ class Database:
     def recent_backtests(self, limit: int = 20) -> pd.DataFrame:
         """Últimos backtests guardados."""
         return pd.DataFrame(self._query("SELECT * FROM backtests ORDER BY id DESC LIMIT ?", (int(limit),)))
+
+
+    # ----------------------------------------------------------- bitácora
+    def add_journal(self, entry: dict[str, Any]) -> int:
+        """Registra una operación cerrada en la bitácora (Módulo 6)."""
+        pnl = entry.get("pnl")
+        data = {
+            "opened_at": entry.get("opened_at") or utc_now_iso(), "coin": entry.get("coin", "?"),
+            "direction": entry.get("direction", "LONG"), "entry": entry.get("entry"),
+            "exit_price": entry.get("exit_price"), "leverage": entry.get("leverage"), "margin": entry.get("margin"),
+            "pnl": pnl, "result": "WIN" if (pnl or 0) > 0 else ("LOSS" if (pnl or 0) < 0 else "BE"),
+            "score": entry.get("score"), "filters": json.dumps(entry.get("filters") or {}),
+            "duration_min": entry.get("duration_min"), "notes": entry.get("notes", ""),
+        }
+        cols = ", ".join(data)
+        marks = ", ".join(f":{k}" for k in data)
+        return int(self._execute(f"INSERT INTO journal ({cols}) VALUES ({marks})", data).lastrowid)
+
+    def journal(self, limit: int = 500) -> list[dict]:
+        """Operaciones de la bitácora en orden cronológico."""
+        rows = self._query("SELECT * FROM journal ORDER BY opened_at, id LIMIT ?", (int(limit),))
+        for r in rows:
+            try:
+                r["filters"] = json.loads(r.get("filters") or "{}")
+            except ValueError:
+                r["filters"] = {}
+        return rows
+
+    def journal_today(self) -> list[dict]:
+        """Operaciones de hoy (UTC), para el stop diario."""
+        today = datetime.now(timezone.utc).date().isoformat()
+        return [r for r in self.journal() if str(r["opened_at"]).startswith(today)]
+
+    def delete_journal(self, entry_id: int) -> None:
+        self._execute("DELETE FROM journal WHERE id = ?", (int(entry_id),))

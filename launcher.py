@@ -1,8 +1,8 @@
 """
 launcher.py
 ===========
-Lanzador de escritorio de FUTURES-SCOPE (es el programa que se convierte en
-FuturesScope.exe con PyInstaller).
+Lanzador de escritorio de FG VIEW (es el programa que se convierte en
+FGView.exe con PyInstaller).
 
 Doble clic -> ventana de arranque con la marca -> inicia el motor en segundo plano
 -> abre la app en tu navegador. Al cerrar la ventana se detiene todo.
@@ -32,12 +32,14 @@ sys.path.insert(0, str(ROOT))
 
 from engine.config import APP_HOME, APP_NAME, APP_VERSION, BUILD_TAG  # noqa: E402
 
-# Datos y .env: junto al .exe (Windows), ~/Library/Application Support/FuturesScope (macOS)
+# Datos y .env: junto al .exe (Windows), ~/Library/Application Support/FGView (macOS)
 HOME = APP_HOME
 IS_MAC = sys.platform == "darwin"
 
 # Paleta (igual que la interfaz)
-BG, PANEL, LINE, TEXT, MUTED, GREEN, RED = "#0E1117", "#12161F", "#1F2633", "#E6EDF3", "#7D8590", "#00FF88", "#FF3B30"
+# Paleta FG VIEW: negro profundo y dorado (verde/rojo solo para estados)
+BG, PANEL, LINE, TEXT, MUTED = "#0A0A0A", "#141414", "#2A2418", "#F5F1E6", "#A89F8A"
+GOLD, GOLD_LIGHT, GOLD_DARK, GREEN, RED = "#D4AF37", "#F2D27A", "#9C7A1E", "#3FB950", "#F85149"
 LOG_FILE = HOME / "data" / "launcher.log"
 
 
@@ -158,10 +160,10 @@ class Splash:
 
         root = tk.Tk()
         self.root = root
-        root.title(f"{APP_NAME} · {BUILD_TAG}")
+        root.title(f"{APP_NAME} V1 · BY GUS X FER")
         root.configure(bg=BG)
         root.resizable(False, False)
-        w, h = 580, 360
+        w, h = 720, 380
         root.geometry(f"{w}x{h}+{(root.winfo_screenwidth() - w) // 2}+{(root.winfo_screenheight() - h) // 3}")
         try:
             self._icon = tk.PhotoImage(file=str(ROOT / "assets" / "icon.png"))
@@ -177,12 +179,18 @@ class Splash:
 
         head = tk.Frame(frame, bg=BG)
         head.pack(anchor="w")
-        dot = tk.Canvas(head, width=14, height=14, bg=BG, highlightthickness=0)
-        dot.create_oval(2, 2, 12, 12, fill=GREEN, outline="")
-        dot.pack(side="left", padx=(0, 10))
-        tk.Label(head, text=" ".join(APP_NAME), fg=TEXT, bg=BG, font=(family, 20, "bold")).pack(side="left")
+        try:  # Portada circular con borde dorado
+            self._logo = tk.PhotoImage(file=str(ROOT / "assets" / "logo.png")).subsample(2, 2)
+            tk.Label(head, image=self._logo, bg=BG).pack(side="left", padx=(0, 16))
+        except Exception:  # noqa: BLE001 - sin logo, punto dorado
+            dot = tk.Canvas(head, width=14, height=14, bg=BG, highlightthickness=0)
+            dot.create_oval(2, 2, 12, 12, fill=GOLD, outline="")
+            dot.pack(side="left", padx=(0, 10))
+        titles = tk.Frame(head, bg=BG)
+        titles.pack(side="left")
+        tk.Label(titles, text=" ".join(APP_NAME), fg=GOLD, bg=BG, font=(family, 24, "bold")).pack(anchor="w")
+        tk.Label(titles, text=BUILD_TAG.upper(), fg=GOLD_LIGHT, bg=BG, font=(family, 10)).pack(anchor="w", pady=(4, 0))
 
-        tk.Label(frame, text=BUILD_TAG.upper(), fg=MUTED, bg=BG, font=(family, 9)).pack(anchor="w", pady=(10, 0))
         tk.Frame(frame, bg=LINE, height=1).pack(fill="x", pady=18)
 
         self.status = tk.Label(frame, text="Iniciando el motor de análisis…", fg=TEXT, bg=BG, font=(family, 10),
@@ -194,8 +202,8 @@ class Splash:
 
         style = ttk.Style(root)
         style.theme_use("clam")
-        style.configure("FS.Horizontal.TProgressbar", troughcolor=PANEL, background=GREEN, bordercolor=PANEL,
-                        lightcolor=GREEN, darkcolor=GREEN, thickness=4)
+        style.configure("FS.Horizontal.TProgressbar", troughcolor=PANEL, background=GOLD, bordercolor=PANEL,
+                        lightcolor=GOLD_LIGHT, darkcolor=GOLD_DARK, thickness=4)
         self.bar = ttk.Progressbar(frame, style="FS.Horizontal.TProgressbar", mode="indeterminate", length=508)
         self.bar.pack(fill="x")
         self.bar.start(12)
@@ -203,7 +211,7 @@ class Splash:
         buttons = tk.Frame(frame, bg=BG)
         buttons.pack(fill="x", pady=(22, 0))
         self.open_btn = tk.Button(buttons, text="ABRIR EN NAVEGADOR", command=self.open_browser, state="disabled",
-                                  bg=GREEN, fg="#04130B", activebackground="#33FFA0", disabledforeground="#2E5C45",
+                                  bg=GOLD, fg="#0A0A0A", activebackground=GOLD_LIGHT, disabledforeground="#5C4A16",
                                   relief="flat", bd=0, padx=18, pady=9, font=(family, 9, "bold"), cursor="hand2")
         self.open_btn.pack(side="left")
         tk.Button(buttons, text="CERRAR", command=self.close, bg=PANEL, fg=TEXT, activebackground=LINE,
@@ -232,7 +240,7 @@ class Splash:
         if self.ready:
             self.bar.stop()
             self.bar.configure(mode="determinate", value=100)
-            self.status.configure(text=f"Listo · {self.url}", fg=GREEN)
+            self.status.configure(text=f"Listo · {self.url}", fg=GOLD_LIGHT)
             self.detail.configure(text="Mantén esta ventana abierta mientras usas la app. Ciérrala para salir.")
             self.open_btn.configure(state="normal")
             self.open_browser()

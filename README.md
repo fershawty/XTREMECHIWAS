@@ -1,13 +1,40 @@
-# FUTURES-SCOPE
+# FG VIEW V1
 
-**BUILD 2 · GUS X SHAWTY X ALFREDOBONUS**
+<img src="assets/logo.png" width="140" align="right" alt="FG VIEW">
+
+**BY GUS X FER** · motor Build 3
 
 Sistema de **análisis** de mercados para operar **futuros**: cripto (perpetuos USDT-M y COIN-M en Binance, Bybit y OKX), acciones, ETFs y futuros CME. Lee la gráfica como un trader de Smart Money Concepts, combina 18 factores técnicos en un **score de 0 a 100**, añade el **contexto económico, social, político y cultural**, y te entrega un plan con entrada, Stop Loss, TP1 y TP2 calculados por riesgo.
 
 > **No ejecuta órdenes.** Genera señales y alertas. La función `execute_order()` existe pero está desactivada a propósito. Los futuros apalancados pueden liquidar tu cuenta: nada de esto es consejo financiero.
 
-![FUTURES-SCOPE](docs/preview.jpg)
+![FG VIEW](docs/preview.jpg)
 <sub>Captura en modo Demo (datos sintéticos).</sub>
+
+---
+
+## 🟡 FG VIEW V1 · Recomendaciones de scalping (15–30 min)
+
+La pestaña **🟡 FG VIEW** analiza la cripto elegida en velas de **5 min** (señal) y **1 h** (tendencia) y entrega un plan completo:
+
+**Riesgo por capital**
+
+| Capital | Riesgo por operación | Margen máximo |
+|---|---|---|
+| $50 – $100 | 2.0% | 30% |
+| $100 – $500 | 1.5% | 25% |
+| $500 – $2,000 | 1.0% | 20% |
+| $2,000 – $10,000 | 0.75% | 15% |
+| +$10,000 | 0.5% | 10% |
+
+**Niveles por volatilidad**: A (BTC, ETH · 10–20x · SL 0.35%), B (SOL, BNB, XRP… · 5–10x · SL 0.70%), C (memecoins e IA · 3–5x · SL 1.20%). TPs al 50/30/20 %.
+
+- **SL dinámico** = 1.2 × ATR(14) de 5 min (nunca menor que el de la tabla). Si la volatilidad amplía el SL, los **TPs se escalan** en la misma proporción para conservar el R:R.
+- **Apalancamiento automático**: el mínimo del rango del nivel que respeta el margen máximo, y nunca tanto como para que la liquidación quede a menos de **3× la distancia del SL**.
+- **6 filtros de entrada** (tendencia 1h, EMA 9/21, VWAP, RSI, volumen, funding + OI): solo recomienda entrar con **4 de 6** y R:R neto ≥ 1:1. **Bloqueos**: noticias de alto impacto, spread > 0.05%, mecha > 2× ATR, fin de semana flojo en Nivel C.
+- **Comisiones visibles**: con SL tan cortos, la comisión taker puede ser ~30% del riesgo. Se muestra el **R:R neto** y se recomienda entrar con **orden límite** (maker).
+- **Gestión**: TP1 50% + SL a break-even · TP2 30% + SL a TP1 · TP3 20% o trailing 0.5×ATR · salida a los 30 min · stop diario (3 pérdidas o −3%).
+- **Bitácora**: registra cada operación; muestra win rate, profit factor, expectativa, drawdown, racha y qué filtros aciertan más. Valida el win rate con 30–50 operaciones antes de subir el riesgo.
 
 ---
 
@@ -26,7 +53,7 @@ Sistema de **análisis** de mercados para operar **futuros**: cripto (perpetuos 
 | **Simulador (Build 2)** | LONG/SHORT con tu capital: margen fijo o riesgo fijo %, TP1/TP2/TP3 parciales, ganancia y pérdida netas, ROI, impacto en la cuenta, liquidación, break-even, R:R, win rate mínimo, tabla de escenarios, comparación 5x/10x/20x/50x, alertas de riesgo y proyección de N operaciones con interés compuesto |
 | **Backtest** | Motor nativo (mismas reglas que en vivo) y Backtrader con órdenes bracket |
 | **API** | FastAPI (`/analyze`, `/signals`, `/kill-switch`...) |
-| **Ejecutable** | `FuturesScope.exe` con ventana de arranque propia, compilado por GitHub Actions |
+| **Ejecutable** | `FGView.exe` con ventana de arranque propia, compilado por GitHub Actions |
 
 ---
 
@@ -34,9 +61,9 @@ Sistema de **análisis** de mercados para operar **futuros**: cripto (perpetuos 
 
 ### Opción A · Ejecutable de Windows (sin instalar Python)
 
-1. Abre la pestaña **Actions** de este repositorio y entra en la última ejecución verde de *Build FuturesScope.exe*.
-2. En **Artifacts** descarga `FuturesScope-Windows` y descomprímelo.
-3. Doble clic en `FuturesScope\FuturesScope.exe`.
+1. Abre la pestaña **Actions** de este repositorio y entra en la última ejecución verde de *Build FGView.exe*.
+2. En **Artifacts** descarga `FGView-Windows` y descomprímelo.
+3. Doble clic en `FGView\FGView.exe`.
 
 <img src="docs/launcher.jpg" width="440" alt="Ventana de arranque">
 
@@ -44,15 +71,15 @@ La carpeta debe quedarse completa (el `.exe` necesita `_internal` a su lado). Tu
 
 ### Opción A2 · App de macOS Intel (Sonoma 14 o superior)
 
-1. En **Actions**, abre la última ejecución verde y descarga el artifact `FuturesScope-macOS-intel` (Macs con procesador **Intel**).
-2. Abre el `.dmg` y arrastra **FuturesScope** a la carpeta **Aplicaciones**.
-3. La primera vez, en *Aplicaciones* haz **Control + clic** (o clic derecho) sobre FuturesScope → **Abrir** → **Abrir**. Es necesario porque la app no está firmada por Apple.
+1. En **Actions**, abre la última ejecución verde y descarga el artifact `FGView-macOS-intel` (Macs con procesador **Intel**).
+2. Abre el `.dmg` y arrastra **FGView** a la carpeta **Aplicaciones**.
+3. La primera vez, en *Aplicaciones* haz **Control + clic** (o clic derecho) sobre FGView → **Abrir** → **Abrir**. Es necesario porque la app no está firmada por Apple.
    Si macOS dice que la app "está dañada", ejecuta esto en la Terminal y vuelve a abrirla:
    ```bash
-   xattr -dr com.apple.quarantine /Applications/FuturesScope.app
+   xattr -dr com.apple.quarantine /Applications/FGView.app
    ```
 
-Tu `.env` y tus datos se guardan en `~/Library/Application Support/FuturesScope`.
+Tu `.env` y tus datos se guardan en `~/Library/Application Support/FGView`.
 
 ### Opción B · Doble clic con Python (Windows / Mac / Linux)
 
@@ -148,7 +175,7 @@ Las API keys de exchanges **no hacen falta** para analizar (los datos son públi
 ```
 ├── app.py                  Interfaz Streamlit
 ├── api.py                  API REST (FastAPI)
-├── launcher.py             Lanzador de escritorio (se convierte en FuturesScope.exe)
+├── launcher.py             Lanzador de escritorio (se convierte en FGView.exe)
 ├── engine/
 │   ├── config.py           Configuración (.env) y marca
 │   ├── data_feeder.py      CCXT + yfinance + demo, OHLCV unificado
@@ -218,4 +245,4 @@ El contexto resume datos públicos con reglas simples y transparentes (los léxi
 
 ---
 
-**FUTURES-SCOPE · BUILD 2 · GUS X SHAWTY X ALFREDOBONUS** · Código abierto y editable.
+**FG VIEW V1 · BY GUS X FER** · Código abierto y editable.

@@ -82,7 +82,7 @@ def run_backtrader(scored: pd.DataFrame, cfg: BacktestConfig) -> dict:
         lines = ("signal", "atr", "ob_long", "ob_short")
         params = (("signal", -1), ("atr", -1), ("ob_long", -1), ("ob_short", -1))
 
-    class FuturesScopeStrategy(bt.Strategy):
+    class FGViewStrategy(bt.Strategy):
         def __init__(self) -> None:
             self.orders = []
             self.bar = 0
@@ -110,7 +110,7 @@ def run_backtrader(scored: pd.DataFrame, cfg: BacktestConfig) -> dict:
 
     cerebro = bt.Cerebro(stdstats=False)
     cerebro.adddata(SignalData(dataname=feed_df))
-    cerebro.addstrategy(FuturesScopeStrategy)
+    cerebro.addstrategy(FGViewStrategy)
     cerebro.broker.setcash(p.equity)
     cerebro.broker.setcommission(commission=cfg.fee_pct / 100.0, leverage=max(1.0, p.leverage))
     cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name="trades")
@@ -167,7 +167,7 @@ def save_plot(scored: pd.DataFrame, trades: pd.DataFrame, path: Path, title: str
 # CLI
 # =============================================================================
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Backtest de FUTURES-SCOPE")
+    ap = argparse.ArgumentParser(description="Backtest de FG VIEW")
     ap.add_argument("--market", default="demo", choices=["crypto", "stock", "etf", "cme", "demo"])
     ap.add_argument("--symbol", default=None, help="BTC/USDT, SPY, ES=F... (por defecto según el mercado)")
     ap.add_argument("--timeframe", default="1h", choices=list(TIMEFRAMES))
@@ -185,7 +185,7 @@ def main() -> None:
     args.symbol = args.symbol or {"crypto": "BTC/USDT", "stock": "NVDA", "etf": "SPY", "cme": "ES=F",
                                   "demo": "DEMO/USDT"}[args.market]
 
-    print(f"\n▶ FUTURES-SCOPE backtest · {args.symbol} · {args.timeframe} · motor {args.engine}")
+    print(f"\n▶ FG VIEW backtest · {args.symbol} · {args.timeframe} · motor {args.engine}")
     try:
         scored, strategy_key = prepare(args)
     except Exception as exc:  # noqa: BLE001

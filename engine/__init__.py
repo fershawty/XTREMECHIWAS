@@ -1,1 +1,1 @@
-"""Motor de análisis de FUTURES-SCOPE."""
+"""Motor de análisis de FG VIEW."""

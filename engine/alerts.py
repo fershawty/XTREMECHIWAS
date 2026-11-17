@@ -48,7 +48,7 @@ class AlertManager:
         """Texto de la alerta (sirve para Telegram, Discord y logs)."""
         arrow = "🟢 LONG" if signal.direction == "LONG" else "🔴 SHORT"
         lines = [
-            f"🚨 FUTURES-SCOPE · {arrow} {symbol} ({timeframe})",
+            f"🚨 FG VIEW · {arrow} {symbol} ({timeframe})",
             f"Score: {signal.score:.0f}/100 · {signal.grade}",
             f"Estrategia: {signal.strategy_name}",
             f"Razón: {signal.reason_text}",

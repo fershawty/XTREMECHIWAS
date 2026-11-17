@@ -1,1 +1,1 @@
-"""Componentes de interfaz de FUTURES-SCOPE."""
+"""Componentes de interfaz de FG VIEW."""

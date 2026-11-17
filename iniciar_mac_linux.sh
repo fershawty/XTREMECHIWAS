@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-#  FUTURES-SCOPE - Arranque en macOS / Linux
+#  FG VIEW - Arranque en macOS / Linux
 #    chmod +x iniciar_mac_linux.sh && ./iniciar_mac_linux.sh
 #  (En macOS puedes renombrarlo a .command para abrirlo con doble clic.)
 # ============================================================================

@@ -1,8 +1,11 @@
 """
 tools/make_icon.py
 ==================
-Genera el icono de FUTURES-SCOPE (assets/icon.png, .ico para Windows y .icns para macOS) con Pillow.
-Diseño minimalista: tres velas sobre fondo oscuro, legible incluso a 16 px.
+Genera los iconos de FG VIEW a partir del logo (assets/fgview_logo.jpg):
+    assets/icon.png   -> ventana de arranque y app (256 px)
+    assets/logo.png   -> portada circular con borde dorado dentro de la app (320 px)
+    assets/icon.ico   -> icono del .exe de Windows
+    assets/icon.icns  -> icono de la app de macOS
 
     python tools/make_icon.py
 """
@@ -11,51 +14,43 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parent.parent
 ASSETS = ROOT / "assets"
-
-BG = (14, 17, 23, 255)
-BORDER = (31, 38, 51, 255)
-GREEN = (0, 255, 136, 255)
-RED = (255, 59, 48, 255)
+SOURCE = ASSETS / "fgview_logo.jpg"
+GOLD = (212, 175, 55, 255)
 
 
-def draw_icon(size: int = 512) -> Image.Image:
-    """Dibuja el icono a `size` px (se reduce después para cada tamaño)."""
-    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
-    r = int(size * 0.22)
-    d.rounded_rectangle([0, 0, size - 1, size - 1], radius=r, fill=BG, outline=BORDER, width=max(2, size // 64))
+def rounded(img: Image.Image, radius_ratio: float = 0.18) -> Image.Image:
+    """Esquinas redondeadas (estilo icono de app)."""
+    size = img.size[0]
+    mask = Image.new("L", img.size, 0)
+    ImageDraw.Draw(mask).rounded_rectangle([0, 0, size - 1, size - 1], radius=int(size * radius_ratio), fill=255)
+    out = img.convert("RGBA")
+    out.putalpha(mask)
+    return out
 
-    # Tres velas: (centro x, cuerpo arriba, cuerpo abajo, mecha arriba, mecha abajo, color)
-    s = size / 512
-    candles = [
-        (150, 300, 380, 260, 410, GREEN),
-        (256, 250, 330, 210, 360, RED),
-        (362, 130, 290, 95, 330, GREEN),
-    ]
-    glow = Image.new("RGBA", img.size, (0, 0, 0, 0))
-    g = ImageDraw.Draw(glow)
-    for cx, top, bottom, wt, wb, color in candles:
-        w = 62 * s
-        g.rounded_rectangle([cx * s - w / 2, top * s, cx * s + w / 2, bottom * s], radius=10 * s, fill=color[:3] + (110,))
-    img.alpha_composite(glow.filter(ImageFilter.GaussianBlur(18 * s)))
-    d = ImageDraw.Draw(img)
-    for cx, top, bottom, wt, wb, color in candles:
-        w = 62 * s
-        d.line([cx * s, wt * s, cx * s, wb * s], fill=color, width=max(2, int(12 * s)))
-        d.rounded_rectangle([cx * s - w / 2, top * s, cx * s + w / 2, bottom * s], radius=10 * s, fill=color)
-    return img
+
+def circular(img: Image.Image, size: int = 320, border: int = 8) -> Image.Image:
+    """Portada circular con borde dorado."""
+    face = img.resize((size, size), Image.LANCZOS).convert("RGBA")
+    mask = Image.new("L", (size, size), 0)
+    ImageDraw.Draw(mask).ellipse([border, border, size - border - 1, size - border - 1], fill=255)
+    out = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    out.paste(face, (0, 0), mask)
+    ImageDraw.Draw(out).ellipse([border // 2, border // 2, size - border // 2 - 1, size - border // 2 - 1],
+                                outline=GOLD, width=border)
+    return out
 
 
 def main() -> None:
-    ASSETS.mkdir(exist_ok=True)
-    big = draw_icon(512)
-    big.resize((256, 256), Image.LANCZOS).save(ASSETS / "icon.png")
-    big.save(ASSETS / "icon.ico", sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
-    big.save(ASSETS / "icon.icns", format="ICNS")  # Icono de la app de macOS
+    src = Image.open(SOURCE).convert("RGB")
+    icon = rounded(src.resize((512, 512), Image.LANCZOS))
+    icon.resize((256, 256), Image.LANCZOS).save(ASSETS / "icon.png")
+    circular(src).save(ASSETS / "logo.png")
+    icon.save(ASSETS / "icon.ico", sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
+    icon.save(ASSETS / "icon.icns", format="ICNS")
     print(f"Iconos generados en {ASSETS}")
 
 

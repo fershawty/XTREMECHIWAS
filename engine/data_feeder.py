@@ -1,7 +1,7 @@
 """
 engine/data_feeder.py
 =====================
-Capa de DATOS de FUTURES-SCOPE.
+Capa de DATOS de FG VIEW.
 
 Responsabilidad única: conseguir velas OHLCV limpias y unificadas, vengan de donde
 vengan, para que el resto del motor no tenga que saber nada de exchanges.

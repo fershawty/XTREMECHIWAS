@@ -318,3 +318,77 @@ def test_api_simulate():
     r = TestClient(api.app).get("/simulate", params={"coin": "BTC", "capital": 1000, "leverage": 10,
                                                       "entry": 100000, "sl": 98000, "tp": "105000", "margin": 100})
     assert r.status_code == 200 and r.json()["tp"]["pnl_net"] == pytest.approx(49.0)
+
+
+# ------------------------------------------------- FG VIEW · recomendador (Build 3)
+def test_fgview_budget_and_tiers():
+    from engine.recommender import budget_rule, tier_for
+
+    assert budget_rule(80) == (2.0, 30.0) and budget_rule(1500) == (1.0, 20.0) and budget_rule(50_000) == (0.5, 10.0)
+    assert tier_for("BTC/USDT")[0].key == "A" and tier_for("SOL")[0].key == "B" and tier_for("PEPE")[0].key == "C"
+    tier, listed = tier_for("XYZ")
+    assert tier.key == "C" and not listed
+
+
+def test_fgview_plan_matches_hand_calculation():
+    from engine.recommender import build_plan
+
+    p = build_plan(1000, "BTC", "LONG", 100000)
+    assert p.risk_pct == 1.0 and p.sl_pct == pytest.approx(0.35)
+    assert p.notional == pytest.approx(10 / 0.0035)  # (capital × riesgo) ÷ distancia al SL
+    assert p.leverage == 15 and p.margin == pytest.approx(p.notional / 15)  # margen ≤ 20 % del capital
+    assert p.margin <= 200 and [round(tp[2]) for tp in p.tps] == [50, 30, 20]
+    assert p.rr_weighted == pytest.approx((0.40 * 0.5 + 0.70 * 0.3 + 1.00 * 0.2) / 0.35)
+    assert p.rr_net < p.rr_weighted and any("LÍMITE" in n for n in p.notes)  # comisiones visibles
+
+
+def test_fgview_liquidation_three_times_sl():
+    from engine.recommender import build_plan
+
+    for coin, atr in (("BTC", 900), ("SOL", 3.0), ("PEPE", 0.0000004)):
+        entry = {"BTC": 100000, "SOL": 150, "PEPE": 0.00001}[coin]
+        p = build_plan(1000, coin, "SHORT", entry, atr5=atr)
+        liq_dist = abs(p.liquidation - p.entry) / p.entry
+        assert liq_dist >= 3 * p.sl_pct / 100 - 1e-9, coin
+        assert p.tier.lev_min >= 1 and p.leverage <= p.tier.lev_max
+
+
+def test_fgview_position_cut_when_margin_cap_exceeded():
+    from engine.recommender import build_plan
+
+    p = build_plan(60, "PEPE", "LONG", 0.00001)  # Nivel C máx. 5x, margen máx. 30 % = $18
+    assert p.margin <= 18 + 1e-6 and any("recorta" in n for n in p.notes)
+
+
+def test_fgview_filters_and_daily_guard():
+    from engine.recommender import best_direction, daily_guard, journal_metrics
+
+    df5, oi = generate_demo_data("5m", 300)
+    df5 = ind.compute_all(df5, open_interest=oi)
+    df1h, _ = generate_demo_data("1h", 200)
+    df1h = ind.compute_all(df1h)
+    rep = best_direction(df5, df1h, "BTC", funding=0.0001, order_book={"spread_pct": 0.01})
+    assert len(rep.checks) == 6 and 0 <= rep.score <= 100 and rep.confidence in ("Alta", "Media", "Baja")
+    blocked = best_direction(df5, df1h, "BTC", funding=0.0001, order_book={"spread_pct": 0.2})
+    assert not blocked.enter and any("Spread" in b for b in blocked.blocks)
+    assert daily_guard([{"pnl": -1}, {"pnl": -1}, {"pnl": -1}], 1000) is not None
+    assert daily_guard([{"pnl": -1}, {"pnl": 5}], 1000) is None
+    m = journal_metrics([{"pnl": 10}, {"pnl": -5}, {"pnl": 8}, {"pnl": 6}, {"pnl": -4}])
+    assert m["trades"] == 5 and m["win_rate"] == pytest.approx(60.0) and m["profit_factor"] == pytest.approx(24 / 9)
+
+
+def test_fgview_journal_db(db):
+    db.add_journal({"coin": "BTC", "direction": "LONG", "entry": 100, "exit_price": 101, "pnl": 3.2,
+                    "filters": {"VWAP": True}})
+    rows = db.journal()
+    assert rows[0]["result"] == "WIN" and rows[0]["filters"] == {"VWAP": True} and len(db.journal_today()) == 1
+
+
+def test_fgview_tps_scale_with_atr_sl():
+    from engine.recommender import build_plan
+
+    base = build_plan(1000, "BTC", "LONG", 100000)  # SL de tabla 0.35 %
+    wide = build_plan(1000, "BTC", "LONG", 100000, atr5=1000)  # SL por ATR 1.2 %
+    assert wide.sl_pct > base.sl_pct and wide.sl_source == "ATR"
+    assert wide.rr_weighted == pytest.approx(base.rr_weighted)  # el R:R de diseño se conserva
+    assert wide.tps[0][1] == pytest.approx(0.40 * wide.sl_pct / 0.35)

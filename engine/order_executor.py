@@ -3,7 +3,7 @@ engine/order_executor.py
 ========================
 Ejecución de órdenes: DESACTIVADA A PROPÓSITO.
 
-FUTURES-SCOPE es un sistema de ANÁLISIS: genera señales y alertas, pero NO opera.
+FG VIEW es un sistema de ANÁLISIS: genera señales y alertas, pero NO opera.
 `execute_order()` existe para que en el futuro puedas conectarlo a un exchange,
 pero su cuerpo real está comentado. Hoy solo registra el intento y devuelve
 {"status": "disabled"}.

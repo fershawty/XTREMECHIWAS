@@ -2,16 +2,16 @@
 """
 futures_scope.spec
 ==================
-Receta de PyInstaller para construir FuturesScope.exe (carpeta autocontenida).
+Receta de PyInstaller para construir FGView.exe (carpeta autocontenida).
 
     pip install -r requirements.txt pyinstaller==6.22.3
     pyinstaller futures_scope.spec --noconfirm
 
 Resultado:
-* Windows: dist/FuturesScope/FuturesScope.exe (+ carpeta _internal, cópiala completa).
+* Windows: dist/FGView/FGView.exe (+ carpeta _internal, cópiala completa).
   Tu .env y tus datos se crean junto al .exe en el primer arranque.
-* macOS:   dist/FuturesScope.app (Sonoma 14 o superior).
-  Tu .env y tus datos se crean en ~/Library/Application Support/FuturesScope.
+* macOS:   dist/FGView.app (Sonoma 14 o superior).
+  Tu .env y tus datos se crean en ~/Library/Application Support/FGView.
 """
 import sys
 
@@ -63,6 +63,7 @@ datas += [
     (".streamlit/config.toml", ".streamlit"),
     (".env.example", "."),
     ("assets/icon.png", "assets"),
+    ("assets/logo.png", "assets"),
 ]
 
 a = Analysis(
@@ -80,27 +81,27 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="FuturesScope",
+    name="FGView",
     console=False,  # Sin ventana negra de consola: se usa la ventana de arranque
     icon="assets/icon.icns" if sys.platform == "darwin" else "assets/icon.ico",
     disable_windowed_traceback=False,
 )
-coll = COLLECT(exe, a.binaries, a.datas, name="FuturesScope")
+coll = COLLECT(exe, a.binaries, a.datas, name="FGView")
 
-# macOS: empaquetar como FuturesScope.app (probado en Sonoma 14)
+# macOS: empaquetar como FGView.app (probado en Sonoma 14)
 if sys.platform == "darwin":
     app = BUNDLE(
         coll,
-        name="FuturesScope.app",
+        name="FGView.app",
         icon="assets/icon.icns",
-        bundle_identifier="com.futuresscope.app",
+        bundle_identifier="com.fgview.app",
         info_plist={
-            "CFBundleName": "FuturesScope",
-            "CFBundleDisplayName": "FUTURES-SCOPE",
-            "CFBundleShortVersionString": "2.0.0",
-            "CFBundleVersion": "2.0.0",
+            "CFBundleName": "FGView",
+            "CFBundleDisplayName": "FG VIEW",
+            "CFBundleShortVersionString": "3.0.0",
+            "CFBundleVersion": "3.0.0",
             "LSMinimumSystemVersion": "14.0",
             "NSHighResolutionCapable": True,
-            "NSHumanReadableCopyright": "BUILD 2 · GUS X SHAWTY X ALFREDOBONUS",
+            "NSHumanReadableCopyright": "FG VIEW V1 · BY GUS X FER",
         },
     )

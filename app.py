@@ -1,7 +1,7 @@
 """
 app.py
 ======
-Entrada principal de FUTURES-SCOPE (interfaz Streamlit).
+Entrada principal de FG VIEW (interfaz Streamlit).
 
 Ejecutar:
     streamlit run app.py
@@ -21,7 +21,11 @@ from __future__ import annotations
 
 import streamlit as st
 
-st.set_page_config(page_title="FUTURES-SCOPE", page_icon="📡", layout="wide", initial_sidebar_state="expanded")
+from pathlib import Path as _Path  # noqa: E402
+
+_ICON = _Path(__file__).with_name("assets") / "icon.png"
+st.set_page_config(page_title="FG VIEW V1", page_icon=str(_ICON) if _ICON.exists() else "🟡", layout="wide",
+                   initial_sidebar_state="expanded")
 
 from engine.backtester import Backtester, BacktestConfig  # noqa: E402
 from engine.config import APP_NAME, BUILD_TAG, SETTINGS  # noqa: E402
@@ -31,6 +35,7 @@ from engine.risk_manager import get_profile  # noqa: E402
 from strategies import AUTO_KEY, STRATEGIES  # noqa: E402
 from ui import components as ui  # noqa: E402
 from ui.simulator_tab import render_simulator  # noqa: E402
+from ui.fgview_tab import render_fgview, render_journal  # noqa: E402
 
 ui.load_css()
 
@@ -77,9 +82,9 @@ def sidebar() -> tuple[AnalysisRequest, dict, bool]:
     """Dibuja los controles y devuelve (petición, capas, auto-análisis)."""
     with st.sidebar:
         st.markdown(
-            f'<div class="fs-brand" style="margin-bottom:0.4rem"><span class="fs-logo-dot"></span>'
-            f'<span class="fs-logo" style="font-size:0.9rem">{APP_NAME}</span></div>'
-            f'<div class="fs-sub" style="margin-bottom:0.6rem">{BUILD_TAG}</div>',
+            f'<div class="fs-brand" style="margin-bottom:0.6rem">{ui.logo_img(small=True)}'
+            f'<div><div class="fs-logo" style="font-size:1rem">{APP_NAME}</div>'
+            f'<div class="fs-credit">{BUILD_TAG}</div></div></div>',
             unsafe_allow_html=True,
         )
 
@@ -238,23 +243,27 @@ def main_panel(req: AnalysisRequest, layers: dict) -> None:
         ui.render_signal_card(result)
         ui.render_kpis(result)
 
-    tabs = st.tabs(["Desglose", "Simulador", "Terminal futuros", "Contexto", "TradingView en vivo", "Backtest",
-                    "Historial", "Noticias"])
+    tabs = st.tabs(["🟡 FG VIEW", "Simulador", "Bitácora", "Desglose", "Terminal futuros", "Contexto",
+                    "TradingView en vivo", "Backtest", "Historial", "Noticias"])
     with tabs[0]:
-        ui.render_factors(result)
+        render_fgview(get_pipeline(), req)
     with tabs[1]:
         render_simulator(simulator_prefill(result, req))
     with tabs[2]:
-        ui.render_trade_terminal(result, on_journal=journal_callback(pipeline, result))
+        render_journal(get_pipeline().db)
     with tabs[3]:
-        ui.render_context(result.context)
+        ui.render_factors(result)
     with tabs[4]:
-        ui.render_tradingview_widget(req.symbol, req.market, req.timeframe, req.contract, req.exchange)
+        ui.render_trade_terminal(result, on_journal=journal_callback(pipeline, result))
     with tabs[5]:
-        render_backtest_tab(pipeline, result, req)
+        ui.render_context(result.context)
     with tabs[6]:
-        ui.render_history(pipeline.db, pipeline.risk)
+        ui.render_tradingview_widget(req.symbol, req.market, req.timeframe, req.contract, req.exchange)
     with tabs[7]:
+        render_backtest_tab(pipeline, result, req)
+    with tabs[8]:
+        ui.render_history(pipeline.db, pipeline.risk)
+    with tabs[9]:
         ui.render_news(pipeline.news, result.risk_check)
     ui.render_footer()
 

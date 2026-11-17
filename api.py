@@ -2,7 +2,7 @@
 api.py
 ======
 API REST del motor de análisis (FastAPI). Opcional: la interfaz Streamlit NO la
-necesita (usa el motor directamente). Sirve para integrar FUTURES-SCOPE con otros
+necesita (usa el motor directamente). Sirve para integrar FG VIEW con otros
 programas, bots o webhooks.
 
 Ejecutar:

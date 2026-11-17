@@ -1,6 +1,6 @@
 @echo off
 REM ==========================================================================
-REM  FUTURES-SCOPE - Construir FuturesScope.exe en tu propio PC (Windows)
+REM  FG VIEW - Construir FGView.exe en tu propio PC (Windows)
 REM  Alternativa: descárgalo ya compilado desde la pestaña "Actions" de GitHub.
 REM ==========================================================================
 chcp 65001 >nul
@@ -18,7 +18,7 @@ if errorlevel 1 ( pause & exit /b 1 )
 if errorlevel 1 ( echo La compilacion fallo. & pause & exit /b 1 )
 
 echo.
-echo  Listo: dist\FuturesScope\FuturesScope.exe
-echo  Copia la carpeta dist\FuturesScope completa (el .exe necesita _internal a su lado).
-explorer dist\FuturesScope
+echo  Listo: dist\FGView\FGView.exe
+echo  Copia la carpeta dist\FGView completa (el .exe necesita _internal a su lado).
+explorer dist\FGView
 pause
