@@ -10,7 +10,7 @@ Receta de PyInstaller para construir FGView.exe (carpeta autocontenida).
 Resultado:
 * Windows: dist/FGView/FGView.exe (+ carpeta _internal, cópiala completa).
   Tu .env y tus datos se crean junto al .exe en el primer arranque.
-* macOS:   dist/FGView.app (Sonoma 14 o superior).
+* macOS:   dist/FGView.app (macOS 12 Monterey o superior).
   Tu .env y tus datos se crean en ~/Library/Application Support/FGView.
 """
 import sys
@@ -88,7 +88,7 @@ exe = EXE(
 )
 coll = COLLECT(exe, a.binaries, a.datas, name="FGView")
 
-# macOS: empaquetar como FGView.app (probado en Sonoma 14)
+# macOS: empaquetar como FGView.app (compatible desde macOS 12 Monterey)
 if sys.platform == "darwin":
     app = BUNDLE(
         coll,
@@ -100,7 +100,7 @@ if sys.platform == "darwin":
             "CFBundleDisplayName": "FG VIEW",
             "CFBundleShortVersionString": "3.1.0",
             "CFBundleVersion": "3.1.0",
-            "LSMinimumSystemVersion": "14.0",
+            "LSMinimumSystemVersion": "12.0",
             "NSHighResolutionCapable": True,
             "NSHumanReadableCopyright": "FG VIEW V1 · BY GUS X FER",
         },

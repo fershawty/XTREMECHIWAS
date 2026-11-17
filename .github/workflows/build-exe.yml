@@ -96,12 +96,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: macos-15-intel  # Mac Intel (compatible con Sonoma 14)
+          - runner: macos-15-intel  # Mac Intel (compatible desde Monterey 12)
             arch: intel
     runs-on: ${{ matrix.runner }}
     env:
       PY: .venv/bin/python
-      MACOSX_DEPLOYMENT_TARGET: "14.0"  # Todo lo que se compile aquí debe arrancar en Sonoma
+      MACOSX_DEPLOYMENT_TARGET: "12.0"  # Todo lo que se compile aquí debe arrancar desde Monterey
       # cryptography (dependencia de ccxt) ya no publica binario para Mac Intel en su última
       # versión; sin esto pip la compila enlazada a librerías de macOS 15. Se fuerza el binario oficial.
       PIP_ONLY_BINARY: "cryptography,cffi"
@@ -132,11 +132,13 @@ jobs:
           $PY -c "import ccxt, cryptography; print('ccxt', ccxt.__version__, '· cryptography', cryptography.__version__)"
           echo "--- Paquetes compilados desde código fuente (si hay):"
           grep -iE "Building wheel for|Building wheels for" pip.log || echo "ninguno"
+      - name: Compatibilidad con macOS 12 Monterey (reinstala binarios demasiado nuevos)
+        run: $PY tools/macos_compat.py 12.0
       - name: Verificar Tcl/Tk (ventana de arranque)
         run: $PY -c "import tkinter; t = tkinter.Tcl(); print('Tcl', t.eval('info patchlevel'), t.eval('info library'))"
       - name: Compilar
         run: $PY -m PyInstaller futures_scope.spec --noconfirm
-      - name: Comprobar Tcl/Tk empaquetado y compatibilidad con Sonoma (macOS 14)
+      - name: Comprobar Tcl/Tk empaquetado y compatibilidad con Monterey (macOS 12)
         run: |
           APP=dist/FGView.app/Contents
           test -f $APP/Frameworks/_tcl_data/init.tcl || test -f $APP/Resources/_tcl_data/init.tcl || { echo "Falta _tcl_data"; exit 1; }
@@ -163,13 +165,13 @@ jobs:
                       continue
                   if m:
                       v = (int(m[1]), int(m[2]))
-                      if v > (14, 0):
+                      if v > (12, 0):
                           bad.append(f"{v[0]}.{v[1]} {p}")
                       if v > worst:
                           worst, worst_file = v, str(p)
           print(f"{count} binarios Mach-O · macOS mínimo requerido: {worst[0]}.{worst[1]} ({worst_file})")
           for b in bad[:20]:
-              print("  exige más que Sonoma:", b)
+              print("  exige más que Monterey:", b)
           if bad:
               print("--- Binarios que enlazan libcrypto/libssl:")
               for p in pathlib.Path("dist/FGView.app").rglob("*.so"):
@@ -226,9 +228,11 @@ jobs:
 
           **Descargas**
           - **Windows**: `FGView-V1-Windows.zip` → descomprime y abre `FGView\FGView.exe`
-          - **Mac Intel (Sonoma 14+)**: `FGView-V1-macOS-Intel.dmg` → arrastra a Aplicaciones; la primera vez Control + clic → Abrir
+          - **Mac Intel (macOS 12 Monterey o superior)**: `FGView-V1-macOS-Intel.dmg` → arrastra a Aplicaciones; la primera vez Control + clic → Abrir
 
           **Novedades**
+          - ✨ Modo fácil: solo pones tu capital y te dice la operación más recomendada en palabras simples, con probabilidad histórica, semáforo y pasos en Binance. Glosario de términos.
+          - Mac compatible desde macOS 12 Monterey.
           - Pestaña 🟡 FG VIEW: plan por capital (riesgo y margen máximo), niveles A/B/C, SL dinámico por ATR con TPs escalados, apalancamiento automático con liquidación ≥ 3× el SL, 6 filtros + bloqueos y confianza 0–100.
           - R:R bruto y neto de comisiones; gestión TP 50/30/20, salida a 30 min y stop diario.
           - Bitácora con win rate, profit factor, drawdown y efectividad por filtro.

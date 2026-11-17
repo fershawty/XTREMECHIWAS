@@ -77,7 +77,7 @@ La pestaña **🟡 FG VIEW** analiza la cripto elegida en velas de **5 min** (se
 
 La carpeta debe quedarse completa (el `.exe` necesita `_internal` a su lado). Tu `.env` y tus datos se crean junto al `.exe`. Windows SmartScreen puede avisar porque el ejecutable no está firmado: *Más información → Ejecutar de todas formas*.
 
-### Opción A2 · App de macOS Intel (Sonoma 14 o superior)
+### Opción A2 · App de macOS Intel (macOS 12 Monterey o superior)
 
 1. En **Actions**, abre la última ejecución verde y descarga el artifact `FGView-macOS-intel` (Macs con procesador **Intel**).
 2. Abre el `.dmg` y arrastra **FGView** a la carpeta **Aplicaciones**.
