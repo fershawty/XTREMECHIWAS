@@ -392,3 +392,27 @@ def test_fgview_tps_scale_with_atr_sl():
     assert wide.sl_pct > base.sl_pct and wide.sl_source == "ATR"
     assert wide.rr_weighted == pytest.approx(base.rr_weighted)  # el R:R de diseño se conserva
     assert wide.tps[0][1] == pytest.approx(0.40 * wide.sl_pct / 0.35)
+
+
+# ------------------------------------------------------------------ modo fácil
+def test_hit_probability_on_known_path():
+    from engine.easy_mode import hit_probability
+
+    idx = pd.date_range("2026-01-01", periods=20, freq="5min", tz="UTC")
+    up = pd.DataFrame({"close": np.linspace(100, 110, 20)}, index=idx)
+    up["high"], up["low"] = up["close"] * 1.001, up["close"] * 0.999
+    st = hit_probability(up, "LONG", tp_pct=1.0, sl_pct=1.0, horizon=6)
+    assert st.tp_first == pytest.approx(100.0) and st.sl_first == 0
+    st_s = hit_probability(up, "SHORT", tp_pct=1.0, sl_pct=1.0, horizon=6)
+    assert st_s.sl_first == pytest.approx(100.0)
+
+
+def test_easy_scan_demo():
+    from engine.easy_mode import GLOSSARY, plain_summary, scan_best
+
+    cands, errors = scan_best(DataFeeder(), 500, "demo", ["BTC", "SOL"])
+    assert len(cands) == 2 and not errors
+    assert cands[0].light in ("verde", "amarillo", "rojo") and len(cands[0].tp_stats) == 3
+    s = plain_summary(cands[0])
+    assert s["headline"] and len(s["steps"]) == 7 and "Stop Loss" in s["loss"]
+    assert "Liquidación" in GLOSSARY and "Apalancamiento (x)" in GLOSSARY

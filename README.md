@@ -13,6 +13,14 @@ Sistema de **análisis** de mercados para operar **futuros**: cripto (perpetuos 
 
 ---
 
+## ✨ Modo fácil (v3.1)
+
+Pones **solo tu capital** y pulsas **Buscar la mejor operación ahora**. FG VIEW revisa las criptos más líquidas y te dice en palabras simples qué hacer, cuánto poner, con qué apalancamiento, dónde ganar y dónde cortar pérdidas, con semáforo 🟢 entrar · 🟡 esperar · 🔴 no operar.
+
+- **Probabilidad histórica**: en situaciones parecidas de los últimos días (EMA, VWAP y RSI a favor), cuántas veces el precio tocó cada TP antes que el SL en 30 minutos.
+- **Valor esperado** por operación con esas probabilidades: solo sale 🟢 si las señales se cumplen, el R:R neto compensa y el valor esperado es positivo.
+- **Pasos en Binance** uno a uno y **glosario** de todos los términos técnicos.
+
 ## 🟡 FG VIEW V1 · Recomendaciones de scalping (15–30 min)
 
 La pestaña **🟡 FG VIEW** analiza la cripto elegida en velas de **5 min** (señal) y **1 h** (tendencia) y entrega un plan completo:

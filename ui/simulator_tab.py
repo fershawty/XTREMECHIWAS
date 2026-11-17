@@ -89,6 +89,9 @@ def _projection_chart(bands, capital: float) -> go.Figure:
 
 def render_simulator(prefill: dict | None = None) -> None:
     """Dibuja la pestaña completa."""
+    from ui.easy_tab import render_glossary
+
+    render_glossary("sim")
     st.session_state.setdefault(K + "coin", "BTC")
     st.session_state.setdefault(K + "dir", "LONG")
     st.session_state.setdefault(K + "mode", "Margen fijo")

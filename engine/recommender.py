@@ -494,11 +494,11 @@ class ScalpContext:
 
 
 def scalp_context(feeder, symbol: str, market: str, contract: str = "USDT-M", exchange: str | None = None,
-                  force_refresh: bool = False) -> ScalpContext:
+                  force_refresh: bool = False, limit5: int = 300) -> ScalpContext:
     """Descarga y calcula indicadores en 5 min (señal) y 1 h (tendencia)."""
     from engine.indicators import compute_all
 
-    d5 = feeder.get_market_data(symbol, market, "5m", contract, exchange, 300, force_refresh)
+    d5 = feeder.get_market_data(symbol, market, "5m", contract, exchange, limit5, force_refresh)
     df5 = compute_all(d5.df, intraday=True, open_interest=d5.open_interest)
     df1h, warnings = None, list(d5.warnings)
     try:
