@@ -1,6 +1,6 @@
 # FUTURES-SCOPE
 
-**BUILD 1 · GUS X SHAWTY X ALFREDOBONUS**
+**BUILD 2 · GUS X SHAWTY X ALFREDOBONUS**
 
 Sistema de **análisis** de mercados para operar **futuros**: cripto (perpetuos USDT-M y COIN-M en Binance, Bybit y OKX), acciones, ETFs y futuros CME. Lee la gráfica como un trader de Smart Money Concepts, combina 18 factores técnicos en un **score de 0 a 100**, añade el **contexto económico, social, político y cultural**, y te entrega un plan con entrada, Stop Loss, TP1 y TP2 calculados por riesgo.
 
@@ -23,6 +23,7 @@ Sistema de **análisis** de mercados para operar **futuros**: cripto (perpetuos 
 | **Riesgo** | SL = ATR×1.5 o bajo el Order Block · TP 1:2 y 1:3 · tamaño por % de riesgo · liquidación aprox. · contratos CME · filtro de noticias ±30 min · **kill switch** tras 3 pérdidas · **perfiles de capital** (bajo/medio/alto) con tope de apalancamiento que mantiene la liquidación detrás del SL |
 | **Contexto** | VIX, dólar, bono 10y, S&P 500, inflación, tipos Fed, desempleo, curva de tipos (FRED), Fear & Greed, funding y titulares de Google News puntuados (económicos, políticos, sociales y culturales) |
 | **Interfaz** | Streamlit oscura y minimalista: gráfico estilo TradingView, tarjeta de señal, terminal de futuros tipo exchange, TradingView en vivo, backtest, historial y noticias |
+| **Simulador (Build 2)** | LONG/SHORT con tu capital: margen fijo o riesgo fijo %, TP1/TP2/TP3 parciales, ganancia y pérdida netas, ROI, impacto en la cuenta, liquidación, break-even, R:R, win rate mínimo, tabla de escenarios, comparación 5x/10x/20x/50x, alertas de riesgo y proyección de N operaciones con interés compuesto |
 | **Backtest** | Motor nativo (mismas reglas que en vivo) y Backtrader con órdenes bracket |
 | **API** | FastAPI (`/analyze`, `/signals`, `/kill-switch`...) |
 | **Ejecutable** | `FuturesScope.exe` con ventana de arranque propia, compilado por GitHub Actions |
@@ -217,4 +218,4 @@ El contexto resume datos públicos con reglas simples y transparentes (los léxi
 
 ---
 
-**FUTURES-SCOPE · BUILD 1 · GUS X SHAWTY X ALFREDOBONUS** · Código abierto y editable.
+**FUTURES-SCOPE · BUILD 2 · GUS X SHAWTY X ALFREDOBONUS** · Código abierto y editable.

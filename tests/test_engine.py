@@ -262,3 +262,59 @@ def test_orderbook_adjustment():
 def test_demo_feed_has_order_book():
     data = DataFeeder().get_market_data("DEMO/USDT", "demo", "1h", limit=300)
     assert data.order_book is not None and -1 <= data.order_book["imbalance"] <= 1
+
+
+# ---------------------------------------------------------------- simulador
+def test_simulator_matches_hand_calculation():
+    from engine.position_simulator import SimInput, TakeProfit, simulate
+
+    r = simulate(SimInput("BTC", "LONG", 1000, 10, 100000, 98000, [TakeProfit(105000)], margin=100))
+    assert r.notional == pytest.approx(1000) and r.liquidation == pytest.approx(90500)
+    assert r.fees == pytest.approx(1.0)
+    assert r.tp_total.pnl_net == pytest.approx(49.0) and r.tp_total.roi_pct == pytest.approx(49.0)
+    assert r.sl.pnl_net == pytest.approx(-21.0) and r.sl.account_pct == pytest.approx(-2.1)
+    assert r.rr == pytest.approx(49 / 21) and r.min_winrate_pct == pytest.approx(30.0)
+    assert any("Riesgo alto" in a for a in r.alerts)
+
+
+def test_simulator_short_risk_mode_and_partials():
+    from engine.position_simulator import SimInput, TakeProfit, simulate
+
+    r = simulate(SimInput("ETH", "SHORT", 2000, 5, 3000, 3060, [TakeProfit(2910, 50), TakeProfit(2850, 50)],
+                          risk_pct=1.0))
+    assert r.notional == pytest.approx(2000 * 0.01 / 0.02)  # (capital × riesgo) ÷ distancia al SL
+    assert r.margin == pytest.approx(r.notional / 5)
+    assert r.liquidation == pytest.approx(3000 * (1 + 1 / 5 - 0.005))
+    assert r.tp_total.pnl_net > 0 > r.sl.pnl_net and len(r.tps) == 2
+
+
+def test_simulator_liquidation_before_sl_alert():
+    from engine.position_simulator import SimInput, TakeProfit, simulate
+
+    r = simulate(SimInput("PEPE", "LONG", 500, 50, 0.00001, 0.0000095, [TakeProfit(0.000011)], margin=20))
+    assert r.sl_liquidated and r.sl.pnl_net == pytest.approx(-20.0)
+    assert any("liquidan ANTES" in a for a in r.alerts) and any("memecoin" in a for a in r.alerts)
+
+
+def test_simulator_rejects_bad_levels():
+    from engine.position_simulator import SimInput, TakeProfit, simulate
+
+    with pytest.raises(ValueError):
+        simulate(SimInput("BTC", "LONG", 1000, 10, 100000, 101000, [TakeProfit(105000)], margin=100))
+
+
+def test_projection_scenarios_ordered():
+    from engine.position_simulator import project
+
+    pr = project(1000, 50, 2.0, 1.0, 100)
+    assert pr.bad < pr.expected < pr.good and pr.ev_per_trade_pct == pytest.approx(0.5)
+
+
+def test_api_simulate():
+    from fastapi.testclient import TestClient
+
+    import api
+
+    r = TestClient(api.app).get("/simulate", params={"coin": "BTC", "capital": 1000, "leverage": 10,
+                                                      "entry": 100000, "sl": 98000, "tp": "105000", "margin": 100})
+    assert r.status_code == 200 and r.json()["tp"]["pnl_net"] == pytest.approx(49.0)

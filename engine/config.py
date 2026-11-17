@@ -25,8 +25,8 @@ from dotenv import load_dotenv
 
 # --- Marca / versión (cámbialo aquí y se actualiza en la app y el .exe) -------
 APP_NAME = "FUTURES-SCOPE"
-APP_VERSION = "1.0.0"
-BUILD_TAG = "BUILD 1 · GUS X SHAWTY X ALFREDOBONUS"
+APP_VERSION = "2.0.0"
+BUILD_TAG = "BUILD 2 · GUS X SHAWTY X ALFREDOBONUS"
 
 # --- Rutas ---------------------------------------------------------------------
 # BASE_DIR: donde está el código (en el .exe es la carpeta interna del paquete).

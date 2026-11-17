@@ -97,10 +97,10 @@ if sys.platform == "darwin":
         info_plist={
             "CFBundleName": "FuturesScope",
             "CFBundleDisplayName": "FUTURES-SCOPE",
-            "CFBundleShortVersionString": "1.0.0",
-            "CFBundleVersion": "1.0.0",
+            "CFBundleShortVersionString": "2.0.0",
+            "CFBundleVersion": "2.0.0",
             "LSMinimumSystemVersion": "14.0",
             "NSHighResolutionCapable": True,
-            "NSHumanReadableCopyright": "BUILD 1 · GUS X SHAWTY X ALFREDOBONUS",
+            "NSHumanReadableCopyright": "BUILD 2 · GUS X SHAWTY X ALFREDOBONUS",
         },
     )

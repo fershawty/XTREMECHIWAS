@@ -36,6 +36,7 @@ import numpy as np
 import pandas as pd
 
 from engine.config import SETTINGS, Settings, get_logger
+from engine.position_simulator import ALL_COINS
 
 # Las librerías externas se importan de forma tolerante: si falta alguna, el bot
 # sigue funcionando con las fuentes que sí estén disponibles.
@@ -112,8 +113,8 @@ TIMEFRAMES: dict[str, TimeframeSpec] = {
 
 # Símbolos sugeridos en la UI (el usuario puede escribir cualquier otro)
 SYMBOL_PRESETS: dict[Market, list[str]] = {
-    Market.CRYPTO: ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT",
-                    "DOGE/USDT", "ADA/USDT", "AVAX/USDT", "LINK/USDT", "SUI/USDT"],
+    # Catálogo completo (Major, L1/L2, IA y narrativas, memecoins): engine/position_simulator.py
+    Market.CRYPTO: [f"{c}/USDT" for c in ALL_COINS],
     Market.STOCK: ["NVDA", "AAPL", "MSFT", "TSLA", "AMZN", "META", "GOOGL", "AMD", "NFLX", "COIN"],
     Market.ETF: ["SPY", "QQQ", "IWM", "DIA", "GLD", "TLT", "XLF", "XLE", "SMH", "ARKK"],
     Market.CME: ["ES=F", "NQ=F", "YM=F", "RTY=F", "MES=F", "MNQ=F", "GC=F", "CL=F", "SI=F", "NG=F"],

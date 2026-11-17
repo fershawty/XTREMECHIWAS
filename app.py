@@ -30,6 +30,7 @@ from engine.pipeline import AnalysisPipeline, AnalysisRequest, AnalysisResult  #
 from engine.risk_manager import get_profile  # noqa: E402
 from strategies import AUTO_KEY, STRATEGIES  # noqa: E402
 from ui import components as ui  # noqa: E402
+from ui.simulator_tab import render_simulator  # noqa: E402
 
 ui.load_css()
 
@@ -195,6 +196,15 @@ def render_backtest_tab(pipeline: AnalysisPipeline, result: AnalysisResult, req:
         ui.render_banners(["Datos sintéticos: el resultado NO representa rendimiento real."])
 
 
+def simulator_prefill(result: AnalysisResult | None, req: AnalysisRequest) -> dict | None:
+    """Setup de la señal actual para el simulador (solo si hay dirección y plan)."""
+    if result is None or not result.ok or result.plan is None or result.signal is None or result.signal.dir_int == 0:
+        return None
+    plan = result.plan
+    return {"coin": req.symbol, "direction": plan.direction, "entry": plan.entry, "sl": plan.stop_loss,
+            "tp1": plan.tp1, "tp2": plan.tp2, "capital": req.equity, "leverage": plan.leverage}
+
+
 def main_panel(req: AnalysisRequest, layers: dict) -> None:
     """Analiza y dibuja todo el panel principal (se re-ejecuta solo en modo auto)."""
     pipeline = get_pipeline()
@@ -207,6 +217,8 @@ def main_panel(req: AnalysisRequest, layers: dict) -> None:
         ui.render_banners([result.error or "Error desconocido"], "err")
         ui.render_empty("No se pudo analizar",
                         "Revisa el símbolo y tu conexión. Para probar sin internet elige el mercado «Demo (sintético)».")
+        st.markdown("#### Simulador de operaciones")
+        render_simulator(None)  # El simulador no necesita datos de mercado
         ui.render_footer()
         return
 
@@ -226,20 +238,23 @@ def main_panel(req: AnalysisRequest, layers: dict) -> None:
         ui.render_signal_card(result)
         ui.render_kpis(result)
 
-    tabs = st.tabs(["Desglose", "Terminal futuros", "Contexto", "TradingView en vivo", "Backtest", "Historial", "Noticias"])
+    tabs = st.tabs(["Desglose", "Simulador", "Terminal futuros", "Contexto", "TradingView en vivo", "Backtest",
+                    "Historial", "Noticias"])
     with tabs[0]:
         ui.render_factors(result)
     with tabs[1]:
-        ui.render_trade_terminal(result, on_journal=journal_callback(pipeline, result))
+        render_simulator(simulator_prefill(result, req))
     with tabs[2]:
-        ui.render_context(result.context)
+        ui.render_trade_terminal(result, on_journal=journal_callback(pipeline, result))
     with tabs[3]:
-        ui.render_tradingview_widget(req.symbol, req.market, req.timeframe, req.contract, req.exchange)
+        ui.render_context(result.context)
     with tabs[4]:
-        render_backtest_tab(pipeline, result, req)
+        ui.render_tradingview_widget(req.symbol, req.market, req.timeframe, req.contract, req.exchange)
     with tabs[5]:
-        ui.render_history(pipeline.db, pipeline.risk)
+        render_backtest_tab(pipeline, result, req)
     with tabs[6]:
+        ui.render_history(pipeline.db, pipeline.risk)
+    with tabs[7]:
         ui.render_news(pipeline.news, result.risk_check)
     ui.render_footer()
 
