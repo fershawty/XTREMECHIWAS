@@ -29,6 +29,11 @@ jobs:
           cache: pip
       - name: Instalar dependencias
         run: pip install -r requirements.txt
+      - name: Compilar núcleo C++ (fgcore)
+        run: |
+          pip install pybind11==3.1.0
+          python setup_fgcore.py build_ext --inplace
+          python -c "from engine.fgview import native; print(native.status()); assert native.AVAILABLE"
       - name: Pytest
         env:
           NEWS_FILTER_ENABLED: "false"
@@ -47,6 +52,12 @@ jobs:
           cache: pip
       - name: Instalar dependencias + PyInstaller
         run: pip install -r requirements.txt pyinstaller==6.22.3
+      - name: Compilar núcleo C++ (fgcore, MSVC)
+        continue-on-error: true  # Si fallara, la app usa la versión Python (mismos resultados)
+        run: |
+          pip install pybind11==3.1.0
+          python setup_fgcore.py build_ext --inplace
+          python -c "from engine.fgview import native; print(native.status())"
       - name: Verificar Tcl/Tk (ventana de arranque)
         shell: pwsh
         run: |
@@ -132,6 +143,14 @@ jobs:
           $PY -c "import ccxt, cryptography; print('ccxt', ccxt.__version__, '· cryptography', cryptography.__version__)"
           echo "--- Paquetes compilados desde código fuente (si hay):"
           grep -iE "Building wheel for|Building wheels for" pip.log || echo "ninguno"
+      - name: Compilar núcleo C++ (fgcore, clang, Intel, macOS 12)
+        continue-on-error: true  # Si fallara, la app usa la versión Python (mismos resultados)
+        env:
+          ARCHFLAGS: "-arch x86_64"
+        run: |
+          $PY -m pip install pybind11==3.1.0
+          $PY setup_fgcore.py build_ext --inplace
+          $PY -c "from engine.fgview import native; print(native.status())"
       - name: Compatibilidad con macOS 12 Monterey (reinstala binarios demasiado nuevos)
         run: $PY tools/macos_compat.py 12.0
       - name: Verificar Tcl/Tk (ventana de arranque)
@@ -222,7 +241,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cat > notes.md <<'MD'
-          ## FG VIEW V1 · BY GUS X FER
+          ## FG VIEW V1 · BY GUS X FER X ALFREDOBONUS
 
           Recomendador de scalping para futuros cripto (operaciones de 15–30 min).
 
@@ -230,7 +249,12 @@ jobs:
           - **Windows**: `FGView-V1-Windows.zip` → descomprime y abre `FGView\FGView.exe`
           - **Mac Intel (macOS 12 Monterey o superior)**: `FGView-V1-macOS-Intel.dmg` → arrastra a Aplicaciones; la primera vez Control + clic → Abrir
 
-          **Novedades**
+          **Novedades v3.4**
+          - ⚙️ Núcleo C++ (pybind11): la gestión TP 50/30/20, la probabilidad histórica y el Monte Carlo del crecimiento exponencial corren en C++ (~60× más rápido) con los mismos resultados que Python (tests de paridad). Si el núcleo no está disponible, la app usa Python automáticamente.
+          - 🧩 Proyecto listo para Visual Studio Code: Python + C++ con POO, tareas para compilar el núcleo, depurar y probar.
+          - 🙌 Créditos: GUS X FER X ALFREDOBONUS.
+
+          **Incluye**
           - 🏗️ Motor rediseñado con POO: una sola lógica para filtros y gestión (lo que se valida es lo que se usa), Modo fácil hasta 4-6× más rápido con descarga en paralelo y caché compartida.
           - 🔬 Validación histórica: ¿funcionó la estrategia en los últimos 3/7/14 días? Win rate, profit factor y resultados por confianza, sesión y filtro.
           - 🎯 ROI objetivo 10/15/20%: movimiento y apalancamiento necesarios y su probabilidad real.

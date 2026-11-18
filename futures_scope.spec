@@ -56,6 +56,15 @@ for package in ("engine", "engine/fgview", "strategies", "ui"):  # Incluye subpa
     hiddenimports += [f"{dotted}.{f.stem}" for f in sorted(Path(package).glob("*.py")) if f.stem != "__init__"]
 hiddenimports += ["tradingview_ta", "streamlit.web.cli", "mplfinance", "six"]
 
+# Núcleo C++ (fgcore): se incluye si se compiló con `python setup_fgcore.py build_ext --inplace`
+_fgcore = sorted(Path(".").glob("fgcore*.pyd")) + sorted(Path(".").glob("fgcore*.so"))
+if _fgcore:
+    binaries += [(str(_fgcore[0]), ".")]
+    hiddenimports.append("fgcore")
+    print(f"Núcleo C++ incluido: {_fgcore[0].name}")
+else:
+    print("AVISO: núcleo C++ no compilado; la app usará la versión Python")
+
 # Archivos del proyecto que se leen desde disco
 datas += [
     ("app.py", "."),
@@ -99,10 +108,10 @@ if sys.platform == "darwin":
         info_plist={
             "CFBundleName": "FGView",
             "CFBundleDisplayName": "FG VIEW",
-            "CFBundleShortVersionString": "3.3.0",
-            "CFBundleVersion": "3.3.0",
+            "CFBundleShortVersionString": "3.4.0",
+            "CFBundleVersion": "3.4.0",
             "LSMinimumSystemVersion": "12.0",
             "NSHighResolutionCapable": True,
-            "NSHumanReadableCopyright": "FG VIEW V1 · BY GUS X FER",
+            "NSHumanReadableCopyright": "FG VIEW V1 · BY GUS X FER X ALFREDOBONUS",
         },
     )

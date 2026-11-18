@@ -458,3 +458,49 @@ def test_glossary():
     from engine.fgview.glossary import GLOSSARY
 
     assert "Liquidación" in GLOSSARY and "Apalancamiento (x)" in GLOSSARY
+
+
+# -----------------------------------------------------------------------------
+# Núcleo C++ (fgcore): mismos resultados que Python
+# -----------------------------------------------------------------------------
+def test_native_status_text():
+    from engine.fgview import native
+
+    assert native.status().startswith("C++ activo") == native.AVAILABLE
+
+
+def test_native_trade_manager_parity(fg):
+    from engine.fgview import native
+    from engine.fgview.manager import TradeManager
+
+    if not native.AVAILABLE:
+        pytest.skip("fgcore no compilado")
+    snap = fg.loader.load("DEMO/USDT", "demo", bars5=600)
+    df5 = snap.df5
+    h, lo, c = (df5[k].to_numpy(float) for k in ("high", "low", "close"))
+    starts = list(range(len(c) - 1))
+    py_tm, cpp_tm = TradeManager(fg.config, use_native=False), TradeManager(fg.config, use_native=True)
+    assert py_tm.backend == "Python" and cpp_tm.backend == "C++"
+    for direction in ("LONG", "SHORT"):
+        p = fg.planner.plan(1000, "BTC", direction, float(c[-1]))
+        a, b = py_tm.evaluate_many(p, h, lo, c, starts), cpp_tm.evaluate_many(p, h, lo, c, starts)
+        assert np.mean(a.reason == b.reason) > 0.99 and np.mean(a.tps_hit == b.tps_hit) > 0.99
+        assert a.pnl.mean() == pytest.approx(b.pnl.mean(), rel=0.02, abs=0.05)
+        ra = py_tm.reach_probability(p.side, h, lo, c, 0.4, 0.3)
+        rb = cpp_tm.reach_probability(p.side, h, lo, c, 0.4, 0.3)
+        assert ra[2] == rb[2] and ra[0] == pytest.approx(rb[0], abs=0.5)
+
+
+def test_native_ladder_parity(fg):
+    from engine.fgview import native
+    from engine.fgview.ladder import LadderConfig, LadderPlanner
+
+    if not native.AVAILABLE:
+        pytest.skip("fgcore no compilado")
+    lc = LadderConfig(capital=20, target=200, coin="SOL", win_rate=65)
+    py_l = LadderPlanner(fg.planner, fg.config, paths=800, use_native=False)
+    cpp_l = LadderPlanner(fg.planner, fg.config, paths=800, use_native=True)
+    for protected in (True, False):
+        a, b = py_l.simulate(lc, 0.4, -0.3, protected), cpp_l.simulate(lc, 0.4, -0.3, protected)
+        for k in a:
+            assert a[k] == pytest.approx(b[k], nan_ok=True)

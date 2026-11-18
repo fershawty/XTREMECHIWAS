@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from engine.fgview import native
 from engine.fgview.config import DEFAULT_CONFIG, FGConfig
 from engine.fgview.plan import PositionPlanner
 from engine.position_simulator import fmt_usd
@@ -70,8 +71,10 @@ class LadderResult:
 
 class LadderPlanner:
     def __init__(self, planner: PositionPlanner, config: FGConfig = DEFAULT_CONFIG, paths: int = 5000,
-                 seed: int = 11) -> None:
+                 seed: int = 11, use_native: bool | None = None) -> None:
         self.planner, self.cfg, self.paths, self.seed = planner, config, paths, seed
+        self.native = native.AVAILABLE if use_native is None else (use_native and native.AVAILABLE)
+        self._core = native.core.LadderSimulator(MIN_STAKE) if self.native else None
 
     def economics(self, lc: LadderConfig) -> tuple[str, float, float, int, float, float, float]:
         """(nivel, SL %, TP %, apalancamiento, distancia a liquidación %, ROI si gana, ROI si pierde)."""
@@ -85,6 +88,8 @@ class LadderPlanner:
     def simulate(self, lc: LadderConfig, roi_win: float, roi_loss: float, protected: bool) -> dict:
         rng = np.random.default_rng(self.seed)
         wins = rng.random((self.paths, lc.max_trades)) < lc.win_rate / 100
+        if self._core is not None:  # Mismos aciertos aleatorios -> mismo resultado, en C++
+            return dict(self._core.simulate(wins, lc.capital, lc.target, roi_win, roi_loss, lc.vault_pct, protected))
         reached, ruined = np.zeros(self.paths, bool), np.zeros(self.paths, bool)
         trades_needed, finals = np.full(self.paths, np.nan), np.zeros(self.paths)
         vault_pct = lc.vault_pct if protected else 0.0

@@ -20,6 +20,12 @@ data/*.png
 data/*.log
 data/selftest.txt
 
+# Núcleo C++ compilado (se genera con setup_fgcore.py)
+fgcore*.so
+fgcore*.pyd
+*.o
+*.obj
+
 # PyInstaller
 build/
 dist/

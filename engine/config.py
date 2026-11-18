@@ -25,10 +25,10 @@ from dotenv import load_dotenv
 
 # --- Marca / versión (cámbialo aquí y se actualiza en la app y el .exe) -------
 APP_NAME = "FG VIEW"
-APP_VERSION = "3.3.0"
-BUILD_TAG = "V1 · BY GUS X FER"
+APP_VERSION = "3.4.0"
+BUILD_TAG = "V1 · BY GUS X FER X ALFREDOBONUS"
 APP_TITLE = f"{APP_NAME} {BUILD_TAG.split(' · ')[0]}"  # "FG VIEW V1"
-APP_CREDITS = "BY GUS X FER"
+APP_CREDITS = "BY GUS X FER X ALFREDOBONUS"
 
 # --- Rutas ---------------------------------------------------------------------
 # BASE_DIR: donde está el código (en el .exe es la carpeta interna del paquete).

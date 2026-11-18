@@ -15,3 +15,6 @@ TA-Lib==0.8.3
 # un entorno virtual separado de Python 3.12:
 #   pip install "pandas-ta==0.4.71b0"
 # y pon INDICATOR_BACKEND=pandas_ta en .env (si algo falla, vuelve al nativo).
+
+# Núcleo C++ de FG VIEW (cpp/fgcore.cpp). Compila con: python setup_fgcore.py build_ext --inplace
+pybind11==3.1.0

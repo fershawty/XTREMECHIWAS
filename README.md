@@ -2,7 +2,7 @@
 
 <img src="assets/logo.png" width="140" align="right" alt="FG VIEW">
 
-**BY GUS X FER** · motor Build 3
+**BY GUS X FER X ALFREDOBONUS** · motor Build 3 · núcleo C++
 
 Sistema de **análisis** de mercados para operar **futuros**: cripto (perpetuos USDT-M y COIN-M en Binance, Bybit y OKX), acciones, ETFs y futuros CME. Lee la gráfica como un trader de Smart Money Concepts, combina 18 factores técnicos en un **score de 0 a 100**, añade el **contexto económico, social, político y cultural**, y te entrega un plan con entrada, Stop Loss, TP1 y TP2 calculados por riesgo.
 
@@ -12,6 +12,26 @@ Sistema de **análisis** de mercados para operar **futuros**: cripto (perpetuos 
 <sub>Captura en modo Demo (datos sintéticos).</sub>
 
 ---
+
+## ⚙️ Python + C++ (v3.4)
+
+Los bucles más pesados están escritos en **C++** (`cpp/fgcore.cpp`), también con POO, y se usan desde Python con **pybind11**:
+
+| Clase C++ | La usa | Qué acelera |
+|---|---|---|
+| `fgcore.TradeManager` | `engine/fgview/manager.py` | Gestión TP 50/30/20 sobre cientos de velas (estadística, validación, ROI objetivo): ~60× más rápido |
+| `fgcore.LadderSimulator` | `engine/fgview/ladder.py` | Monte Carlo del crecimiento exponencial (miles de caminos) |
+
+`engine/fgview/native.py` detecta si el núcleo está compilado; si no, se usa la versión Python con **exactamente** la misma lógica (lo comprueban los tests de paridad). `FGVIEW_NATIVE=0` fuerza Python.
+
+Compilar el núcleo (necesitas un compilador C++: en Windows *Build Tools for Visual Studio* con "Desarrollo para el escritorio con C++"; en Mac `xcode-select --install`):
+
+```bash
+pip install pybind11==3.1.0
+python setup_fgcore.py build_ext --inplace
+```
+
+En VS Code: **Terminal → Ejecutar tarea → 5. Compilar núcleo C++**.
 
 ## 🏗️ Arquitectura POO del motor FG VIEW (v3.3)
 
@@ -277,4 +297,4 @@ El contexto resume datos públicos con reglas simples y transparentes (los léxi
 
 ---
 
-**FG VIEW V1 · BY GUS X FER** · Código abierto y editable.
+**FG VIEW V1 · BY GUS X FER X ALFREDOBONUS** · Código abierto y editable. Gracias a **Alfredo Bonus** por su ayuda.

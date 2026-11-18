@@ -160,7 +160,7 @@ class Splash:
 
         root = tk.Tk()
         self.root = root
-        root.title(f"{APP_NAME} V1 · BY GUS X FER")
+        root.title(f"{APP_NAME} {BUILD_TAG}")
         root.configure(bg=BG)
         root.resizable(False, False)
         w, h = 720, 380
@@ -384,7 +384,9 @@ def engine_check() -> str:
 
     fg = FGServices.create(DataFeeder())
     fg_rec = fg.recommender.recommend("DEMO/USDT", "demo", 1000)
-    fg_msg = f"FG VIEW OK ({fg_rec.light}, {fg_rec.stats.samples} casos)"
+    from engine.fgview import native
+
+    fg_msg = f"FG VIEW OK ({fg_rec.light}, {fg_rec.stats.samples} casos) · núcleo {native.status()}"
     from engine.context_analyzer import ContextAnalyzer
     from engine.news_filter import NewsFilter
     from engine.pipeline import AnalysisPipeline, AnalysisRequest

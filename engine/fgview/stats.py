@@ -48,11 +48,9 @@ class SetupStatistics:
         idx = [i for i in range(len(c) - horizon) if (mask[i] if similar else True)]
         if not idx:
             return OutcomeStats(0, False, (0.0, 0.0, 0.0), 0.0, 0.0, 0.0, 0.0)
-        outs = [self.manager.run(plan.rebase(c[i]), h, lo, c, i) for i in idx]
-        tps = np.array([o.tps_hit for o in outs])
-        pnl = np.array([o.pnl for o in outs])
-        n = len(outs)
+        b = self.manager.evaluate_many(plan, h, lo, c, idx)  # C++ si está compilado
+        tps, pnl, n = b.tps_hit, b.pnl, len(idx)
         reach = tuple(float((tps >= k).mean() * 100) for k in (1, 2, 3))
-        sl_first = sum(1 for o in outs if o.tps_hit == 0 and o.reason == "Stop Loss") / n * 100
-        time_exit = sum(1 for o in outs if o.tps_hit == 0 and o.reason.startswith("Tiempo")) / n * 100
+        sl_first = float(((tps == 0) & (b.reason == 0)).mean() * 100)
+        time_exit = float(((tps == 0) & (b.reason == 4)).mean() * 100)
         return OutcomeStats(n, similar, reach, sl_first, time_exit, float(pnl.mean()), float((pnl > 0).mean() * 100))

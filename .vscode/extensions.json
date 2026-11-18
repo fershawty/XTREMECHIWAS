@@ -13,6 +13,8 @@
     "mikestead.dotenv",
     "redhat.vscode-yaml",
     "streetsidesoftware.code-spell-checker-spanish",
+    "ms-vscode.cpptools",
+    "ms-vscode.cmake-tools",
     "anthropic.claude-code"
   ]
 }
