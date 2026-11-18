@@ -231,6 +231,9 @@ jobs:
           - **Mac Intel (macOS 12 Monterey o superior)**: `FGView-V1-macOS-Intel.dmg` → arrastra a Aplicaciones; la primera vez Control + clic → Abrir
 
           **Novedades**
+          - 🏗️ Motor rediseñado con POO: una sola lógica para filtros y gestión (lo que se valida es lo que se usa), Modo fácil hasta 4-6× más rápido con descarga en paralelo y caché compartida.
+          - 🔬 Validación histórica: ¿funcionó la estrategia en los últimos 3/7/14 días? Win rate, profit factor y resultados por confianza, sesión y filtro.
+          - 🎯 ROI objetivo 10/15/20%: movimiento y apalancamiento necesarios y su probabilidad real.
           - 📈 Crecimiento exponencial: reto escalera SIN liquidaciones (liquidación ≥ 3× más lejos que el SL, caja fuerte, freno tras 2 pérdidas) y comparación con la escalera clásica por Monte Carlo.
           - ✨ Modo fácil: solo pones tu capital y te dice la operación más recomendada en palabras simples, con probabilidad histórica, semáforo y pasos en Binance. Glosario de términos.
           - Mac compatible desde macOS 12 Monterey.

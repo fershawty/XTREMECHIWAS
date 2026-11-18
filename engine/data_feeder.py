@@ -323,7 +323,7 @@ class DataFeeder:
     """
 
     # Instancias CCXT compartidas (cargar mercados es lento: se hace una vez)
-    _exchange_cache: dict[str, Any] = {}
+    _exchange_cache: dict[tuple[str, int], Any] = {}
     _exchange_lock = threading.Lock()
 
     def __init__(self, settings: Settings = SETTINGS) -> None:
@@ -467,9 +467,12 @@ class DataFeeder:
 
     def _get_exchange(self, ex_id: str) -> Any:
         """Crea (una sola vez) la instancia CCXT configurada para futuros."""
+        # Una instancia por hilo: las instancias de CCXT no son seguras entre hilos
+        # (el Modo fácil descarga varias criptos en paralelo).
+        key = (ex_id, threading.get_ident())
         with self._exchange_lock:
-            if ex_id in self._exchange_cache:
-                return self._exchange_cache[ex_id]
+            if key in self._exchange_cache:
+                return self._exchange_cache[key]
             klass = getattr(ccxt, ex_id)
             market_types = {"binance": ["linear", "inverse"], "bybit": ["linear", "inverse"], "okx": ["swap"]}
             exchange = klass(
@@ -485,7 +488,7 @@ class DataFeeder:
             )
             # NOTA: no pasamos API keys a propósito. Para leer datos no hacen falta
             # y así es imposible ejecutar operaciones privadas por accidente.
-            self._exchange_cache[ex_id] = exchange
+            self._exchange_cache[key] = exchange
             return exchange
 
     @staticmethod

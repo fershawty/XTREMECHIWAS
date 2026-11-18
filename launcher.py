@@ -376,8 +376,15 @@ def engine_check() -> str:
     import importlib
 
     for name in ("engine.pipeline", "engine.backtester", "engine.context_analyzer", "strategies", "ui.components",
+                 "engine.fgview.container", "ui.easy_tab", "ui.fgview_tab", "ui.ladder_tab", "ui.simulator_tab",
                  "plotly.graph_objects", "ccxt", "yfinance", "mplfinance", "tradingview_ta"):
         importlib.import_module(name)
+    from engine.data_feeder import DataFeeder
+    from engine.fgview import FGServices
+
+    fg = FGServices.create(DataFeeder())
+    fg_rec = fg.recommender.recommend("DEMO/USDT", "demo", 1000)
+    fg_msg = f"FG VIEW OK ({fg_rec.light}, {fg_rec.stats.samples} casos)"
     from engine.context_analyzer import ContextAnalyzer
     from engine.news_filter import NewsFilter
     from engine.pipeline import AnalysisPipeline, AnalysisRequest
@@ -386,7 +393,7 @@ def engine_check() -> str:
         AnalysisRequest(symbol="DEMO/USDT", market="demo", timeframe="1h"))
     if not res.ok:
         raise RuntimeError(res.error)
-    return f"motor OK ({res.signal.direction} {res.signal.score:.0f}/100)"
+    return f"motor OK ({res.signal.direction} {res.signal.score:.0f}/100) · {fg_msg}"
 
 
 def tcl_check() -> tuple[bool, str]:

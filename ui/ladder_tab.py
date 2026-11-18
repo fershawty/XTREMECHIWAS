@@ -11,23 +11,22 @@ import math
 import pandas as pd
 import streamlit as st
 
-from engine.ladder import LadderConfig, ladder_rules, plan_ladder
+from engine.fgview.ladder import LadderConfig
 from engine.position_simulator import ALL_COINS, fmt_usd
-from engine.recommender import journal_metrics, tier_label
 
 
-def render_ladder(db) -> None:
+def render_ladder(services) -> None:
     st.markdown("### 📈 Crecimiento exponencial · reto escalera protegido")
     st.caption("Haz crecer un capital pequeño escalón a escalón SIN que te liquiden: el Stop Loss siempre salta mucho "
                "antes que la liquidación y una parte de cada ganancia va a una caja fuerte.")
 
-    m = journal_metrics(db.journal())
+    m = services.journal.summary() if services.journal is not None else {"trades": 0}
     wr_default = round(m["win_rate"]) if m.get("trades", 0) >= 10 else 55
     c1, c2, c3 = st.columns(3)
     capital = c1.number_input("Capital inicial del reto (USDT)", min_value=5.0, value=20.0, step=5.0, key="lad_cap")
     target = c2.number_input("Objetivo (USDT)", min_value=10.0, value=200.0, step=50.0, key="lad_target")
     coin = c3.selectbox("Cripto", ALL_COINS, index=ALL_COINS.index("SOL"), key="lad_coin",
-                        format_func=lambda c: f"{c} · {tier_label(c)}")
+                        format_func=lambda c: f"{c} · {services.tiers.label(c)}")
     c1, c2, c3, c4 = st.columns(4)
     wr = c1.slider("Tu % de aciertos", 30, 90, int(wr_default), key="lad_wr",
                    help="Usa el de tu Bitácora (se rellena solo a partir de 10 operaciones).")
@@ -39,8 +38,8 @@ def render_ladder(db) -> None:
         st.caption(f"% de aciertos tomado de tu Bitácora ({m['trades']} operaciones).")
 
     try:
-        r = plan_ladder(LadderConfig(capital, target, coin, float(wr), float(vault), int(tp_level),
-                                     max_trades=int(max_trades)))
+        r = services.ladder.plan(LadderConfig(capital, target, coin, float(wr), float(vault), int(tp_level),
+                                              max_trades=int(max_trades)))
     except ValueError as exc:
         st.warning(str(exc))
         return
@@ -79,7 +78,7 @@ def render_ladder(db) -> None:
         "Si gana": fmt_usd(s.win, True), "A caja fuerte": fmt_usd(s.vault_add), "Si pierde": fmt_usd(s.loss, True),
         "Caja fuerte": fmt_usd(s.vault_total), "Total": fmt_usd(s.total_after_win),
     } for s in r.steps]), hide_index=True, width="stretch", height=320)
-    st.markdown("**Reglas de oro**  \n" + "  \n".join(f"{i}. {t}" for i, t in enumerate(ladder_rules(r), 1)))
+    st.markdown("**Reglas de oro**  \n" + "  \n".join(f"{i}. {t}" for i, t in enumerate(services.ladder.rules(r), 1)))
     st.caption("Las probabilidades dependen de tu % de aciertos real. Simulación educativa, no es asesoría financiera.")
     st.markdown(STAR_OF_DAVID, unsafe_allow_html=True)
 

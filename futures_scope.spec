@@ -50,9 +50,10 @@ for pkg in ("streamlit", "plotly", "yfinance", "ccxt", "pandas", "numpy", "reque
 # (Se listan desde el disco: collect_submodules corre aislado y no ve la carpeta del proyecto.)
 from pathlib import Path
 
-for package in ("engine", "strategies", "ui"):
-    hiddenimports.append(package)
-    hiddenimports += [f"{package}.{f.stem}" for f in sorted(Path(package).glob("*.py")) if f.stem != "__init__"]
+for package in ("engine", "engine/fgview", "strategies", "ui"):  # Incluye subpaquetes (motor POO FG VIEW)
+    dotted = package.replace("/", ".")
+    hiddenimports.append(dotted)
+    hiddenimports += [f"{dotted}.{f.stem}" for f in sorted(Path(package).glob("*.py")) if f.stem != "__init__"]
 hiddenimports += ["tradingview_ta", "streamlit.web.cli", "mplfinance", "six"]
 
 # Archivos del proyecto que se leen desde disco
@@ -98,8 +99,8 @@ if sys.platform == "darwin":
         info_plist={
             "CFBundleName": "FGView",
             "CFBundleDisplayName": "FG VIEW",
-            "CFBundleShortVersionString": "3.2.0",
-            "CFBundleVersion": "3.2.0",
+            "CFBundleShortVersionString": "3.3.0",
+            "CFBundleVersion": "3.3.0",
             "LSMinimumSystemVersion": "12.0",
             "NSHighResolutionCapable": True,
             "NSHumanReadableCopyright": "FG VIEW V1 · BY GUS X FER",

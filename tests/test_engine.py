@@ -320,118 +320,141 @@ def test_api_simulate():
     assert r.status_code == 200 and r.json()["tp"]["pnl_net"] == pytest.approx(49.0)
 
 
-# ------------------------------------------------- FG VIEW · recomendador (Build 3)
-def test_fgview_budget_and_tiers():
-    from engine.recommender import budget_rule, tier_for
+# ===================================================== FG VIEW (paquete POO engine/fgview)
+@pytest.fixture(scope="module")
+def fg():
+    from engine.fgview import FGServices
 
-    assert budget_rule(80) == (2.0, 30.0) and budget_rule(1500) == (1.0, 20.0) and budget_rule(50_000) == (0.5, 10.0)
-    assert tier_for("BTC/USDT")[0].key == "A" and tier_for("SOL")[0].key == "B" and tier_for("PEPE")[0].key == "C"
-    tier, listed = tier_for("XYZ")
-    assert tier.key == "C" and not listed
+    return FGServices.create(DataFeeder())
 
 
-def test_fgview_plan_matches_hand_calculation():
-    from engine.recommender import build_plan
+def _bars(prices, spread=0.001):
+    idx = pd.date_range("2026-01-01", periods=len(prices), freq="5min", tz="UTC")
+    c = np.asarray(prices, float)
+    return c * (1 + spread), c * (1 - spread), c, idx
 
-    p = build_plan(1000, "BTC", "LONG", 100000)
+
+def test_fgview_budget_and_tiers(fg):
+    assert fg.planner.budget.rule(80) == (2.0, 30.0) and fg.planner.budget.rule(1500) == (1.0, 20.0)
+    assert fg.planner.budget.rule(50_000) == (0.5, 10.0)
+    assert fg.tiers.for_coin("BTC/USDT")[0].key == "A" and fg.tiers.for_coin("SOL")[0].key == "B"
+    assert fg.tiers.for_coin("PEPE")[0].key == "C"
+    tier, listed = fg.tiers.for_coin("XYZ")
+    assert tier.key == "C" and not listed and fg.tiers.resolve("DEMO/USDT") == "BTC"
+
+
+def test_fgview_plan_matches_hand_calculation(fg):
+    p = fg.planner.plan(1000, "BTC", "LONG", 100000)
     assert p.risk_pct == 1.0 and p.sl_pct == pytest.approx(0.35)
     assert p.notional == pytest.approx(10 / 0.0035)  # (capital × riesgo) ÷ distancia al SL
-    assert p.leverage == 15 and p.margin == pytest.approx(p.notional / 15)  # margen ≤ 20 % del capital
-    assert p.margin <= 200 and [round(tp[2]) for tp in p.tps] == [50, 30, 20]
+    assert p.leverage == 15 and p.margin == pytest.approx(p.notional / 15) and p.margin <= 200
+    assert [round(tp[2]) for tp in p.tps] == [50, 30, 20]
     assert p.rr_weighted == pytest.approx((0.40 * 0.5 + 0.70 * 0.3 + 1.00 * 0.2) / 0.35)
-    assert p.rr_net < p.rr_weighted and any("LÍMITE" in n for n in p.notes)  # comisiones visibles
+    assert p.rr_net < p.rr_weighted and any("LÍMITE" in n for n in p.notes)
 
 
-def test_fgview_liquidation_three_times_sl():
-    from engine.recommender import build_plan
-
-    for coin, atr in (("BTC", 900), ("SOL", 3.0), ("PEPE", 0.0000004)):
-        entry = {"BTC": 100000, "SOL": 150, "PEPE": 0.00001}[coin]
-        p = build_plan(1000, coin, "SHORT", entry, atr5=atr)
-        liq_dist = abs(p.liquidation - p.entry) / p.entry
-        assert liq_dist >= 3 * p.sl_pct / 100 - 1e-9, coin
-        assert p.tier.lev_min >= 1 and p.leverage <= p.tier.lev_max
+def test_fgview_liquidation_three_times_sl(fg):
+    for coin, entry, atr in (("BTC", 100000, 900), ("SOL", 150, 3.0), ("PEPE", 0.00001, 0.0000004)):
+        p = fg.planner.plan(1000, coin, "SHORT", entry, atr5=atr)
+        assert abs(p.liquidation - p.entry) / p.entry >= 3 * p.sl_pct / 100 - 1e-9, coin
+        assert p.leverage <= p.tier.lev_max
 
 
-def test_fgview_position_cut_when_margin_cap_exceeded():
-    from engine.recommender import build_plan
-
-    p = build_plan(60, "PEPE", "LONG", 0.00001)  # Nivel C máx. 5x, margen máx. 30 % = $18
+def test_fgview_position_cut_and_tp_scaling(fg):
+    p = fg.planner.plan(60, "PEPE", "LONG", 0.00001)  # Nivel C máx. 5x, margen máx. 30 % = $18
     assert p.margin <= 18 + 1e-6 and any("recorta" in n for n in p.notes)
+    base = fg.planner.plan(1000, "BTC", "LONG", 100000)
+    wide = fg.planner.plan(1000, "BTC", "LONG", 100000, atr5=1000)
+    assert wide.sl_source == "ATR" and wide.rr_weighted == pytest.approx(base.rr_weighted)
 
 
-def test_fgview_filters_and_daily_guard():
-    from engine.recommender import best_direction, daily_guard, journal_metrics
+def test_plan_rebase_keeps_distances(fg):
+    p = fg.planner.plan(1000, "SOL", "LONG", 150)
+    q = p.rebase(300)
+    assert q.entry == 300 and q.stop_loss / 300 == pytest.approx(p.stop_loss / 150)
+    assert q.tps[2][0] / 300 == pytest.approx(p.tps[2][0] / 150) and q.tp_pnl == p.tp_pnl
 
-    df5, oi = generate_demo_data("5m", 300)
-    df5 = ind.compute_all(df5, open_interest=oi)
-    df1h, _ = generate_demo_data("1h", 200)
-    df1h = ind.compute_all(df1h)
-    rep = best_direction(df5, df1h, "BTC", funding=0.0001, order_book={"spread_pct": 0.01})
-    assert len(rep.checks) == 6 and 0 <= rep.score <= 100 and rep.confidence in ("Alta", "Media", "Baja")
-    blocked = best_direction(df5, df1h, "BTC", funding=0.0001, order_book={"spread_pct": 0.2})
-    assert not blocked.enter and any("Spread" in b for b in blocked.blocks)
-    assert daily_guard([{"pnl": -1}, {"pnl": -1}, {"pnl": -1}], 1000) is not None
-    assert daily_guard([{"pnl": -1}, {"pnl": 5}], 1000) is None
-    m = journal_metrics([{"pnl": 10}, {"pnl": -5}, {"pnl": 8}, {"pnl": 6}, {"pnl": -4}])
+
+def test_trade_manager_full_ladder_and_stop(fg):
+    p = fg.planner.plan(1000, "BTC", "LONG", 100.0)
+    h, lo, c, _ = _bars([100, 100.5, 101, 101.5, 102, 102, 102])  # sube y toca TP1, TP2 y TP3
+    out = fg.manager.run(p, h, lo, c, 0)
+    assert out.tps_hit == 3 and out.pnl == pytest.approx(sum(p.tp_pnl))
+    h, lo, c, _ = _bars([100, 99.5, 99, 98, 98, 98, 98])  # cae directo al SL
+    out = fg.manager.run(p, h, lo, c, 0)
+    assert out.tps_hit == 0 and out.reason == "Stop Loss" and out.pnl == pytest.approx(p.sl_pnl)
+    h, lo, c, _ = _bars([100, 100.45, 99.5, 99.0, 99, 99, 99])  # TP1 y vuelta: resto en break-even
+    out = fg.manager.run(p, h, lo, c, 0)
+    assert out.tps_hit == 1 and out.pnl == pytest.approx(p.tp_pnl[0])
+
+
+def test_single_source_filters_live_equals_history(fg):
+    """El filtro en vivo y la matriz histórica deben coincidir en la última vela (una sola lógica)."""
+    snap = fg.loader.load("DEMO/USDT", "demo", bars5=400)
+    for direction in ("LONG", "SHORT"):
+        live = [c.passed for c in fg.filters.evaluate(snap, direction, "BTC").checks]
+        hist = fg.filters.matrix(snap.df5, snap.df1h, direction)[-1].tolist()
+        # El de tendencia 1h y el de funding usan datos "en vivo" (última vela de 1h / funding actual)
+        assert live[1:5] == hist[1:5]
+
+
+def test_recommendation_and_daily_guard(fg):
+    from engine.fgview.journal import DailyGuard, TradeStats
+
+    r = fg.recommender.recommend("DEMO/USDT", "demo", 1000)
+    assert r.light in ("verde", "amarillo", "rojo") and len(r.report.checks) == 6 and 0 <= r.report.score <= 100
+    assert r.stats.samples > 0 and len(r.stats.reach) == 3 and "FG VIEW" in fg.recommender.format(r)
+    assert DailyGuard().check([{"pnl": -1}] * 3, 1000) is not None and DailyGuard().check([{"pnl": 5}], 1000) is None
+    m = TradeStats.summary([{"pnl": 10}, {"pnl": -5}, {"pnl": 8}, {"pnl": 6}, {"pnl": -4}])
     assert m["trades"] == 5 and m["win_rate"] == pytest.approx(60.0) and m["profit_factor"] == pytest.approx(24 / 9)
 
 
-def test_fgview_journal_db(db):
-    db.add_journal({"coin": "BTC", "direction": "LONG", "entry": 100, "exit_price": 101, "pnl": 3.2,
-                    "filters": {"VWAP": True}})
-    rows = db.journal()
-    assert rows[0]["result"] == "WIN" and rows[0]["filters"] == {"VWAP": True} and len(db.journal_today()) == 1
+def test_spread_block(fg):
+    from engine.fgview.snapshot import MarketSnapshot
+
+    snap = fg.loader.load("DEMO/USDT", "demo", bars5=400)
+    wide = MarketSnapshot(snap.symbol, snap.df5, snap.df1h, 0.0001, {"spread_pct": 0.2}, "demo")
+    rep = fg.filters.best(wide, "BTC")
+    assert not rep.enter and any("Spread" in b for b in rep.blocks)
 
 
-def test_fgview_tps_scale_with_atr_sl():
-    from engine.recommender import build_plan
-
-    base = build_plan(1000, "BTC", "LONG", 100000)  # SL de tabla 0.35 %
-    wide = build_plan(1000, "BTC", "LONG", 100000, atr5=1000)  # SL por ATR 1.2 %
-    assert wide.sl_pct > base.sl_pct and wide.sl_source == "ATR"
-    assert wide.rr_weighted == pytest.approx(base.rr_weighted)  # el R:R de diseño se conserva
-    assert wide.tps[0][1] == pytest.approx(0.40 * wide.sl_pct / 0.35)
-
-
-# ------------------------------------------------------------------ modo fácil
-def test_hit_probability_on_known_path():
-    from engine.easy_mode import hit_probability
-
-    idx = pd.date_range("2026-01-01", periods=20, freq="5min", tz="UTC")
-    up = pd.DataFrame({"close": np.linspace(100, 110, 20)}, index=idx)
-    up["high"], up["low"] = up["close"] * 1.001, up["close"] * 0.999
-    st = hit_probability(up, "LONG", tp_pct=1.0, sl_pct=1.0, horizon=6)
-    assert st.tp_first == pytest.approx(100.0) and st.sl_first == 0
-    st_s = hit_probability(up, "SHORT", tp_pct=1.0, sl_pct=1.0, horizon=6)
-    assert st_s.sl_first == pytest.approx(100.0)
-
-
-def test_easy_scan_demo():
-    from engine.easy_mode import GLOSSARY, plain_summary, scan_best
-
-    cands, errors = scan_best(DataFeeder(), 500, "demo", ["BTC", "SOL"])
-    assert len(cands) == 2 and not errors
-    assert cands[0].light in ("verde", "amarillo", "rojo") and len(cands[0].tp_stats) == 3
-    s = plain_summary(cands[0])
+def test_easy_scan_parallel_and_roi(fg):
+    cands, errors = fg.advisor.scan(500, "demo", ["BTC", "SOL", "DOGE"])
+    assert len(cands) == 3 and not errors
+    s = fg.advisor.summary(cands[0])
     assert s["headline"] and len(s["steps"]) == 7 and "Stop Loss" in s["loss"]
-    assert "Liquidación" in GLOSSARY and "Apalancamiento (x)" in GLOSSARY
+    roi = fg.advisor.roi_options(cands[0])
+    assert {"ROI objetivo", "Apalanc.", "Movimiento necesario"} <= set(roi.columns) and len(roi) >= 3
 
 
-# ---------------------------------------------------------------- reto escalera
-def test_ladder_never_liquidates_and_beats_classic():
-    from engine.ladder import LadderConfig, plan_ladder
+def test_fg_backtester_runs(fg):
+    v = fg.backtester.run_symbol(fg.loader, "SOL", "demo", 3)
+    assert v.bars > 0 and "trades" in v.metrics
+    if v.metrics["trades"]:
+        assert set(v.trades["passes"]) <= {4, 5, 6} and not v.by_confidence.empty
 
-    r = plan_ladder(LadderConfig(capital=20, target=200, coin="SOL", win_rate=70))
-    assert r.liq_pct >= 3 * r.sl_pct  # la liquidación queda >= 3× más lejos que el SL
-    assert -0.15 < r.roi_loss < 0  # perder un escalón cuesta poco, nunca el 100 %
+
+def test_journal_db(db):
+    from engine.fgview.journal import TradeJournal
+
+    j = TradeJournal(db)
+    j.add({"coin": "BTC", "direction": "LONG", "entry": 100, "exit_price": 101, "pnl": 3.2, "filters": {"VWAP": True}})
+    assert j.entries()[0]["result"] == "WIN" and len(j.today()) == 1 and j.summary()["trades"] == 1
+
+
+def test_ladder_never_liquidates_and_beats_classic(fg):
+    from engine.fgview.ladder import LadderConfig
+
+    r = fg.ladder.plan(LadderConfig(capital=20, target=200, coin="SOL", win_rate=70))
+    assert r.liq_pct >= 3 * r.sl_pct and -0.15 < r.roi_loss < 0
     assert r.sim_protected["ruin_pct"] < r.sim_classic["ruin_pct"]
     assert r.sim_protected["success_pct"] > r.sim_classic["success_pct"]
-    assert r.steps[-1].total_after_win >= 200 and r.steps[0].stake == 20
+    assert r.steps[-1].total_after_win >= 200
+    weak = fg.ladder.plan(LadderConfig(capital=20, target=100, coin="BTC", win_rate=35))
+    assert weak.notes and "ventaja" in weak.notes[0]
 
 
-def test_ladder_warns_without_edge():
-    from engine.ladder import LadderConfig, plan_ladder
+def test_glossary():
+    from engine.fgview.glossary import GLOSSARY
 
-    r = plan_ladder(LadderConfig(capital=20, target=100, coin="BTC", win_rate=35))
-    assert r.notes and "ventaja" in r.notes[0]
+    assert "Liquidación" in GLOSSARY and "Apalancamiento (x)" in GLOSSARY

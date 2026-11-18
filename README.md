@@ -13,6 +13,26 @@ Sistema de **análisis** de mercados para operar **futuros**: cripto (perpetuos 
 
 ---
 
+## 🏗️ Arquitectura POO del motor FG VIEW (v3.3)
+
+El motor vive en `engine/fgview/`: cada pieza es una clase con una sola responsabilidad y se conectan por inyección de dependencias en `FGServices` (`container.py`).
+
+| Clase | Qué hace |
+|---|---|
+| `FGConfig` | Todos los parámetros (riesgo, filtros mínimos, tiempo máximo…) en un objeto |
+| `TierCatalog` / `BudgetPolicy` | Niveles A/B/C y riesgo por capital |
+| `SnapshotLoader` | Velas 5m + 1h con indicadores, **caché compartida** y **descarga en paralelo** |
+| `Filter` (6 subclases) / `FilterSet` | Filtros y bloqueos: **una sola lógica** para la app en vivo y para la validación histórica |
+| `PositionPlanner` | SL, TPs, apalancamiento, liquidación y R:R |
+| `TradeManager` | La **única** gestión TP 50/30/20 (en vivo, estadística, validación y ROI objetivo) |
+| `SetupStatistics` | Cómo le fue a *este* plan en situaciones parecidas |
+| `ScalpRecommender` / `EasyModeAdvisor` | Recomendación y Modo fácil (con ROI objetivo) |
+| `RecommenderBacktester` | Validación histórica: win rate real por confianza, sesión y filtro |
+| `LadderPlanner` | Crecimiento exponencial sin liquidaciones |
+| `TradeJournal` / `DailyGuard` | Bitácora y stop diario |
+
+Para añadir un filtro basta con crear una subclase de `Filter` y añadirla a `DEFAULT_FILTERS`: la app, la estadística y la validación lo usan automáticamente.
+
 ## 📈 Crecimiento exponencial (v3.2)
 
 Reto escalera **sin liquidaciones**: cada escalón usa margen aislado y un apalancamiento limitado para que la liquidación quede ≥ 3× más lejos que el Stop Loss (perder un escalón cuesta ~−8 %, nunca el 100 %). Una parte de cada ganancia va a una **caja fuerte** que ya no se arriesga y, tras 2 pérdidas seguidas, se arriesga la mitad. Compara con Monte Carlo la escalera **protegida** contra la **clásica** (todo dentro): probabilidad de llegar al objetivo, de quemar la cuenta y operaciones necesarias, con tu % de aciertos de la Bitácora.

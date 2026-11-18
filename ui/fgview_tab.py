@@ -16,9 +16,6 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from engine.position_simulator import fmt_px, fmt_usd
-from engine.recommender import (MAX_HOLD_MIN, best_direction, build_plan, daily_guard, evaluate_filters,
-                                filter_effectiveness, format_recommendation, journal_metrics, management_text,
-                                options_table, scalp_context)
 
 GOLD, GOLD_LIGHT, GREEN, RED, MUTED, BG = "#D4AF37", "#F2D27A", "#3FB950", "#F85149", "#A89F8A", "#0A0A0A"
 
@@ -74,86 +71,74 @@ def _send_to_simulator(plan, capital: float) -> None:
     st.session_state["fg_sent"] = True
 
 
-def coin_tier_symbol(req) -> str:
-    return "BTC" if req.market == "demo" else req.symbol
-
-
 # =============================================================================
 # Pestaña principal FG VIEW
 # =============================================================================
-def render_fgview(pipeline, req) -> None:
+def render_fgview(services, req) -> None:
     if req.market not in ("crypto", "demo"):
         st.info("El recomendador FG VIEW es para **criptos en futuros perpetuos**. Elige el mercado Cripto (o Demo).")
         return
-
+    rec_engine = services.recommender
     c1, c2, c3 = st.columns([1, 1, 1])
     capital = c1.number_input("Capital (USDT)", min_value=10.0, value=float(req.equity or 1000.0), step=50.0,
                               key="fg_capital")
     mode = c2.segmented_control("Dirección", ["Auto", "LONG", "SHORT"], default="Auto", key="fg_dir") or "Auto"
     refresh = c3.button("Actualizar recomendación", key="fg_refresh", width="stretch")
-
     try:
-        ctx = scalp_context(pipeline.feeder, req.symbol, req.market, req.contract, req.exchange, refresh)
+        rec = rec_engine.recommend(req.symbol, req.market, capital, mode, req.contract, req.exchange, force=refresh)
     except Exception as exc:  # noqa: BLE001
         st.error(f"No se pudieron obtener velas de 5 min de {req.symbol}: {exc}")
         return
-
-    news = pipeline.news.check()
-    kw = dict(funding=ctx.funding, order_book=ctx.order_book, news_blocked=news.message if news.blocked else None)
-    rep = best_direction(ctx.df5, ctx.df1h, coin_tier_symbol(req), **kw) if mode == "Auto" else \
-        evaluate_filters(mode, ctx.df5, ctx.df1h, coin_tier_symbol(req), **kw)
-    guard = daily_guard(pipeline.db.journal_today(), capital)
-    if guard:
-        rep.blocks.insert(0, guard)
-
-    coin = "BTC" if req.market == "demo" else req.symbol  # El modo demo simula un BTC
-    plan = build_plan(capital, coin, rep.direction, ctx.price, ctx.atr5)
-    for w in ctx.warnings:
+    plan, rep = rec.plan, rec.report
+    for w in rec.snapshot.warnings:
         st.caption(f"⚠️ {w}")
 
     left, right = st.columns([1.7, 1], gap="large")
     with left:
-        st.markdown(format_recommendation(plan, rep))
-        st.markdown("**Filtros de entrada** (mínimo 4 de 6)")
-        st.dataframe(pd.DataFrame([{"": "✅" if c.passed else "⬜", "Filtro": c.name, "Detalle": c.detail}
-                                   for c in rep.checks]), hide_index=True, width="stretch")
-        st.markdown(f"**Apalancamientos del Nivel {plan.tier.key}** "
-                    f"({plan.tier.lev_min}x–{plan.tier.lev_max}x · riesgo {plan.risk_pct:g}% · margen máx. "
-                    f"{plan.max_margin_pct:g}%)")
-        st.dataframe(options_table(plan), hide_index=True, width="stretch")
-        st.markdown(management_text(plan))
+        st.markdown(rec_engine.format(rec))
+        st.markdown(f"**Filtros de entrada** (mínimo {rep.min_filters} de {len(rep.checks)})")
+        st.dataframe(pd.DataFrame([{"": "✅" if c.passed else "⬜", "Filtro": c.name, "Detalle": c.detail,
+                                    "En palabras simples": c.plain} for c in rep.checks]),
+                     hide_index=True, width="stretch")
+        st.markdown(f"**Apalancamientos del Nivel {plan.tier.key}** ({plan.tier.lev_min}x–{plan.tier.lev_max}x · "
+                    f"riesgo {plan.risk_pct:g}% · margen máx. {plan.max_margin_pct:g}%)")
+        st.dataframe(services.planner.options_table(plan), hide_index=True, width="stretch")
+        st.markdown(rec_engine.management_text(plan))
     with right:
         st.plotly_chart(plan_ladder(plan), width="stretch", config={"displayModeBar": False}, key="fg_ladder")
         st.button("Enviar al Simulador", key="fg_to_sim", width="stretch", on_click=_send_to_simulator,
                   args=(plan, capital))
         if st.session_state.pop("fg_sent", False):
             st.success("Plan enviado: ábrelo en la pestaña Simulador.")
-        with st.expander("📒 Registrar el resultado en la bitácora"):
-            exit_px = st.text_input("Precio de salida", key="fg_exit", placeholder=fmt_px(plan.tps[0][0]))
-            dur = st.number_input("Duración (min)", 1, 600, 20, key="fg_dur")
-            if st.button("Guardar operación", key="fg_save", width="stretch"):
-                try:
-                    px = float(str(exit_px).replace(",", "."))
-                except ValueError:
-                    st.warning("Escribe el precio de salida.")
-                else:
-                    d = 1 if plan.direction == "LONG" else -1
-                    pnl = plan.notional * d * (px - plan.entry) / plan.entry - plan.fees
-                    pipeline.db.add_journal({
-                        "coin": plan.coin, "direction": plan.direction, "entry": plan.entry, "exit_price": px,
-                        "leverage": plan.leverage, "margin": plan.margin, "pnl": round(pnl, 2), "score": rep.score,
-                        "filters": {c.name: c.passed for c in rep.checks}, "duration_min": dur,
-                    })
-                    st.toast(f"Guardado: {fmt_usd(pnl, True)}")
-        st.caption(f"Datos: {ctx.source} · velas de 5 min (señal) y 1 h (tendencia) · tiempo máximo {MAX_HOLD_MIN} min")
+        if services.journal is not None:
+            with st.expander("📒 Registrar el resultado en la bitácora"):
+                exit_px = st.text_input("Precio de salida", key="fg_exit", placeholder=fmt_px(plan.tps[0][0]))
+                dur = st.number_input("Duración (min)", 1, 600, 20, key="fg_dur")
+                if st.button("Guardar operación", key="fg_save", width="stretch"):
+                    try:
+                        px = float(str(exit_px).replace(",", "."))
+                    except ValueError:
+                        st.warning("Escribe el precio de salida.")
+                    else:
+                        pnl = plan.notional * plan.side * (px - plan.entry) / plan.entry - plan.fees
+                        services.journal.add({
+                            "coin": plan.coin, "direction": plan.direction, "entry": plan.entry, "exit_price": px,
+                            "leverage": plan.leverage, "margin": plan.margin, "pnl": round(pnl, 2), "score": rep.score,
+                            "filters": {c.name: c.passed for c in rep.checks}, "duration_min": dur})
+                        st.toast(f"Guardado: {fmt_usd(pnl, True)}")
+        st.caption(f"Datos: {rec.snapshot.source} · velas de 5 min (señal) y 1 h (tendencia) · "
+                   f"tiempo máximo {services.config.max_hold_min} min")
 
 
 # =============================================================================
 # Bitácora
 # =============================================================================
-def render_journal(db) -> None:
-    trades = db.journal()
-    m = journal_metrics(trades)
+def render_journal(journal) -> None:
+    if journal is None:
+        st.info("Bitácora no disponible.")
+        return
+    trades = journal.entries()
+    m = journal.summary()
     n = m.get("trades", 0)
     st.progress(min(1.0, n / 30), text=f"{n} de 30 operaciones para validar el win rate (ideal 50)")
     if not n:
@@ -173,9 +158,9 @@ def render_journal(db) -> None:
     st.markdown("**¿Qué filtros predicen mejor los aciertos?**")
     if n < 20:
         st.caption(f"Con {n} operaciones todavía es pronto: la revisión fiable empieza a las 20.")
-    st.dataframe(filter_effectiveness(trades), hide_index=True, width="stretch")
+    st.dataframe(journal.by_filter(), hide_index=True, width="stretch")
     with st.expander("Borrar una operación"):
         sid = st.selectbox("Operación", [t["id"] for t in trades][::-1], key="fg_del_id")
         if st.button("Borrar", key="fg_del"):
-            db.delete_journal(int(sid))
+            journal.delete(int(sid))
             st.rerun()

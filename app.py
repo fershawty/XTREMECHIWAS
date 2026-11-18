@@ -30,6 +30,7 @@ st.set_page_config(page_title="FG VIEW V1", page_icon=str(_ICON) if _ICON.exists
 from engine.backtester import Backtester, BacktestConfig  # noqa: E402
 from engine.config import APP_NAME, BUILD_TAG, SETTINGS  # noqa: E402
 from engine.data_feeder import MARKET_LABELS, SYMBOL_PRESETS, TIMEFRAMES, Market  # noqa: E402
+from engine.fgview import FGServices  # noqa: E402
 from engine.pipeline import AnalysisPipeline, AnalysisRequest, AnalysisResult  # noqa: E402
 from engine.risk_manager import get_profile  # noqa: E402
 from strategies import AUTO_KEY, STRATEGIES  # noqa: E402
@@ -40,6 +41,13 @@ from ui.easy_tab import render_easy, render_glossary  # noqa: E402
 from ui.ladder_tab import render_ladder  # noqa: E402
 
 ui.load_css()
+
+
+@st.cache_resource(show_spinner=False)
+def get_services() -> FGServices:
+    """Servicios FG VIEW (POO) conectados una sola vez: comparten caché de datos con toda la app."""
+    p = get_pipeline()
+    return FGServices.create(p.feeder, news=p.news, db=p.db)
 
 
 @st.cache_resource(show_spinner=False)
@@ -248,16 +256,16 @@ def main_panel(req: AnalysisRequest, layers: dict) -> None:
     tabs = st.tabs(["✨ Modo fácil", "📈 Crecimiento exponencial", "🟡 FG VIEW", "Simulador", "Bitácora", "Desglose",
                     "Terminal futuros", "Contexto", "TradingView en vivo", "Backtest", "Historial", "Noticias"])
     with tabs[0]:
-        render_easy(get_pipeline(), req)
+        render_easy(get_services(), req)
     with tabs[1]:
-        render_ladder(get_pipeline().db)
+        render_ladder(get_services())
     with tabs[2]:
-        render_fgview(get_pipeline(), req)
+        render_fgview(get_services(), req)
         render_glossary("fg")
     with tabs[3]:
         render_simulator(simulator_prefill(result, req))
     with tabs[4]:
-        render_journal(get_pipeline().db)
+        render_journal(get_services().journal)
     with tabs[5]:
         ui.render_factors(result)
     with tabs[6]:
