@@ -1,0 +1,18 @@
+{
+  // VS Code te ofrecerá instalar estas extensiones al abrir la carpeta del proyecto
+  "recommendations": [
+    "ms-python.python",
+    "ms-python.vscode-pylance",
+    "ms-python.debugpy",
+    "charliermarsh.ruff",
+    "ms-toolsai.jupyter",
+    "eamodio.gitlens",
+    "github.vscode-pull-request-github",
+    "github.vscode-github-actions",
+    "qwtel.sqlite-viewer",
+    "mikestead.dotenv",
+    "redhat.vscode-yaml",
+    "streetsidesoftware.code-spell-checker-spanish",
+    "anthropic.claude-code"
+  ]
+}
