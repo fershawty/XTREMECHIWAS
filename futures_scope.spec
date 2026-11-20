@@ -109,8 +109,8 @@ if sys.platform == "darwin":
         info_plist={
             "CFBundleName": "FGIsraelView",
             "CFBundleDisplayName": "FG ISRAEL VIEW",
-            "CFBundleShortVersionString": "4.0.0",
-            "CFBundleVersion": "4.0.0",
+            "CFBundleShortVersionString": "4.0.1",
+            "CFBundleVersion": "4.0.1",
             "LSMinimumSystemVersion": "12.0",
             "NSHighResolutionCapable": True,
             "NSHumanReadableCopyright": "FG ISRAEL VIEW BUILD 1 · BY GUS X FER X ALFREDOBONUS",

@@ -319,7 +319,8 @@ def build_pages(req: AnalysisRequest, layers: dict, auto: bool) -> dict[str, lis
     page = lambda render: (lambda: render(svc(), req))  # noqa: E731
     return {
         "Operar": [
-            P(easy, "Modo fácil", "✨", "facil", default=True),
+            P(analysis, "Gráfica y señal", "📊", "grafica", default=True),
+            P(easy, "Modo fácil", "✨", "facil"),
             P(page(ip.render_time_machine), "Time Machine", "⏳", "time-machine"),
             P(page(ip.render_entry_timer), "Entry Timer", "⏱️", "entry-timer"),
             P(fgview, "FG VIEW pro", "🟡", "fgview"),
@@ -337,7 +338,6 @@ def build_pages(req: AnalysisRequest, layers: dict, auto: bool) -> dict[str, lis
             P(lambda: render_journal(svc().journal), "Bitácora", "📒", "bitacora"),
         ],
         "Contexto": [
-            P(analysis, "Análisis técnico", "📊", "analisis"),
             P(page(ip.render_fundamentals), "Fundamentales cripto", "💎", "fundamentales"),
             P(page(ip.render_smart_money), "Smart Money", "🐋", "smart-money"),
         ],
