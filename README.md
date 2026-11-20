@@ -1,8 +1,8 @@
-# FG VIEW V1
+# FG ISRAEL VIEW · Build 1
 
 <img src="assets/logo.png" width="140" align="right" alt="FG VIEW">
 
-**BY GUS X FER X ALFREDOBONUS** · motor Build 3 · núcleo C++
+**BY GUS X FER X ALFREDOBONUS** · Build 1 · Python + C++ (POO)
 
 Sistema de **análisis** de mercados para operar **futuros**: cripto (perpetuos USDT-M y COIN-M en Binance, Bybit y OKX), acciones, ETFs y futuros CME. Lee la gráfica como un trader de Smart Money Concepts, combina 18 factores técnicos en un **score de 0 a 100**, añade el **contexto económico, social, político y cultural**, y te entrega un plan con entrada, Stop Loss, TP1 y TP2 calculados por riesgo.
 
@@ -12,6 +12,26 @@ Sistema de **análisis** de mercados para operar **futuros**: cripto (perpetuos 
 <sub>Captura en modo Demo (datos sintéticos).</sub>
 
 ---
+
+## 🕎 FG ISRAEL VIEW Build 1 (v4.0)
+
+Rediseño con menú lateral por secciones y un interruptor **🎓 PRINCIPIANTE GOY / 🕎 EXPERTO RABBI**: en modo principiante cada módulo explica qué hace y cómo usarlo paso a paso y pliega las tablas técnicas; en modo experto se ve todo el detalle.
+
+| Módulo | Clase (`engine/fgview/`) | Qué hace |
+|---|---|---|
+| 7 ⏳ Time Machine | `TimeMachine` (+ `fgcore.TimeMachine` en C++) | 100,000 simulaciones Monte Carlo: bootstrap por bloques de 15–30 min sobre 90 días de velas de 1 min, solo tramos con ATR ±20% del actual → P(TP1/TP2/TP3/SL/tiempo), expectativa, VaR 95% y veredicto ✅/⚠️/❌ |
+| 8 📡 Chart Scanner | `ChartScanner` | Niveles A/B/C en 5m/15m/1h: cruce EMA 9/21, ruptura de 1h, rebote VWAP, divergencias RSI, volumen > 2×, squeeze → top 5 |
+| 9 📰 News Monitor | `NewsMonitor` | Calendario + noticias cripto + exchanges con impacto y sentimiento; bloqueo ±30 min |
+| 10 ⏱️ Entry Timer | `EntryTimer` | Cierre de vela de 5m, sesiones Londres/NY, funding, cancelación si el precio se aleja > 0.3 × ATR |
+| 11 🛡️ Risk Manager | `RiskManager`, `PositionBook` | Stop diario, máx. 2 posiciones, sin correlacionadas en la misma dirección, liquidación ≥ 3× SL |
+| 12 💰 Budget Manager | `BudgetManager` | Saldo real, riesgo a la mitad tras −10%, retiro del 20% cada +25% |
+| 13 🤖 Order Executor | `OrderExecutor`, `PaperBroker`, `LiveBroker` | Papel por defecto; real semiautomático en Binance/Bybit con verificación de permisos (sin retiros, con IPs), margen aislado, SL + TPs reduce-only |
+| 14 🔔 Alertas | `PriceAlerts` | Precio, cruce de EMAs, movimiento > 2% en 5 min, liquidación cerca; Telegram/webhook (`python -m engine.fgview.pricealerts`) |
+| 15 💎 Fundamentales | `CryptoFundamentals` | Fees (DefiLlama), desbloqueos > 2% del circulante, quemas, ETFs y flujos (`data/crypto_fundamentals.json`) |
+| 16 🐋 Smart Money | `SmartMoneyTracker` | Congreso de EE. UU. (STOCK Act) en COIN/MSTR/mineras/ETFs y ballenas (Whale Alert). Solo contexto |
+| 🔥 BURN OUT | `BurnOutStrategy` | ⛔ Bolsa de quema ≤ 5% del capital, 50–100x en BTC/ETH, 25–50x nivel B, prohibido en memecoins, solo con P(TP1) ≥ 65% y señal ≥ 80, máx. 2 intentos/día, bloqueo 7 días si llega a $0, confirmación «CONFIRMO» |
+
+Variables nuevas en `.env`: `LIVE_TRADING_ENABLED` (modo real, por defecto `false`), `QUIVER_API_KEY` y `WHALE_ALERT_API_KEY` (opcionales).
 
 ## ⚙️ Python + C++ (v3.4)
 
@@ -105,7 +125,7 @@ La pestaña **🟡 FG VIEW** analiza la cripto elegida en velas de **5 min** (se
 | **Simulador (Build 2)** | LONG/SHORT con tu capital: margen fijo o riesgo fijo %, TP1/TP2/TP3 parciales, ganancia y pérdida netas, ROI, impacto en la cuenta, liquidación, break-even, R:R, win rate mínimo, tabla de escenarios, comparación 5x/10x/20x/50x, alertas de riesgo y proyección de N operaciones con interés compuesto |
 | **Backtest** | Motor nativo (mismas reglas que en vivo) y Backtrader con órdenes bracket |
 | **API** | FastAPI (`/analyze`, `/signals`, `/kill-switch`...) |
-| **Ejecutable** | `FGView.exe` con ventana de arranque propia, compilado por GitHub Actions |
+| **Ejecutable** | `FGIsraelView.exe` con ventana de arranque propia, compilado por GitHub Actions |
 
 ---
 
@@ -113,9 +133,9 @@ La pestaña **🟡 FG VIEW** analiza la cripto elegida en velas de **5 min** (se
 
 ### Opción A · Ejecutable de Windows (sin instalar Python)
 
-1. Abre la pestaña **Actions** de este repositorio y entra en la última ejecución verde de *Build FGView.exe*.
-2. En **Artifacts** descarga `FGView-Windows` y descomprímelo.
-3. Doble clic en `FGView\FGView.exe`.
+1. Abre la pestaña **Actions** de este repositorio y entra en la última ejecución verde de *Build FGIsraelView.exe*.
+2. En **Artifacts** descarga `FGIsraelView-Windows` y descomprímelo.
+3. Doble clic en `FGIsraelView\FGIsraelView.exe`.
 
 <img src="docs/launcher.jpg" width="440" alt="Ventana de arranque">
 
@@ -123,12 +143,12 @@ La carpeta debe quedarse completa (el `.exe` necesita `_internal` a su lado). Tu
 
 ### Opción A2 · App de macOS Intel (macOS 12 Monterey o superior)
 
-1. En **Actions**, abre la última ejecución verde y descarga el artifact `FGView-macOS-intel` (Macs con procesador **Intel**).
-2. Abre el `.dmg` y arrastra **FGView** a la carpeta **Aplicaciones**.
-3. La primera vez, en *Aplicaciones* haz **Control + clic** (o clic derecho) sobre FGView → **Abrir** → **Abrir**. Es necesario porque la app no está firmada por Apple.
+1. En **Actions**, abre la última ejecución verde y descarga el artifact `FGIsraelView-macOS-intel` (Macs con procesador **Intel**).
+2. Abre el `.dmg` y arrastra **FGIsraelView** a la carpeta **Aplicaciones**.
+3. La primera vez, en *Aplicaciones* haz **Control + clic** (o clic derecho) sobre FGIsraelView → **Abrir** → **Abrir**. Es necesario porque la app no está firmada por Apple.
    Si macOS dice que la app "está dañada", ejecuta esto en la Terminal y vuelve a abrirla:
    ```bash
-   xattr -dr com.apple.quarantine /Applications/FGView.app
+   xattr -dr com.apple.quarantine /Applications/FGIsraelView.app
    ```
 
 Tu `.env` y tus datos se guardan en `~/Library/Application Support/FGView`.
@@ -227,7 +247,7 @@ Las API keys de exchanges **no hacen falta** para analizar (los datos son públi
 ```
 ├── app.py                  Interfaz Streamlit
 ├── api.py                  API REST (FastAPI)
-├── launcher.py             Lanzador de escritorio (se convierte en FGView.exe)
+├── launcher.py             Lanzador de escritorio (se convierte en FGIsraelView.exe)
 ├── engine/
 │   ├── config.py           Configuración (.env) y marca
 │   ├── data_feeder.py      CCXT + yfinance + demo, OHLCV unificado
@@ -297,4 +317,4 @@ El contexto resume datos públicos con reglas simples y transparentes (los léxi
 
 ---
 
-**FG VIEW V1 · BY GUS X FER X ALFREDOBONUS** · Código abierto y editable. Gracias a **Alfredo Bonus** por su ayuda.
+**FG ISRAEL VIEW Build 1 · BY GUS X FER X ALFREDOBONUS** · Código abierto y editable. Gracias a **Alfredo Bonus** por su ayuda.

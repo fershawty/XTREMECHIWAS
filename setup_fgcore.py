@@ -16,7 +16,7 @@ from setuptools import setup
 
 setup(
     name="fgcore",
-    version="1.0.0",
+    version="1.1.0",
     ext_modules=[Pybind11Extension("fgcore", ["cpp/fgcore.cpp"], cxx_std=17)],
     cmdclass={"build_ext": build_ext},
     zip_safe=False,

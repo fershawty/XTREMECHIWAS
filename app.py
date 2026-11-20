@@ -1,18 +1,17 @@
 """
 app.py
 ======
-Entrada principal de FG VIEW (interfaz Streamlit).
+Entrada principal de FG ISRAEL VIEW (interfaz Streamlit).
 
 Ejecutar:
     streamlit run app.py
 
-Distribución de la pantalla:
-* Barra lateral: mercado, símbolo, temporalidad, tipo de futuro, estrategia,
-  botón ANALIZAR AHORA, auto-análisis cada 60 s, riesgo y capas del gráfico.
-* Centro: gráfico de velas estilo TradingView con zonas, EMAs, VWAP y señales.
-* Derecha: tarjeta de SEÑAL (LONG/SHORT, score, razón, entrada, SL, TP1, TP2).
-* Pestañas: desglose del score, terminal de futuros, contexto, TradingView en vivo,
-  backtest, historial y noticias.
+Distribución de la pantalla (rediseño Build 1):
+* Barra lateral: menú por secciones (Operar, Escanear, Riesgo y capital, Contexto,
+  Herramientas), interruptor 🎓 PRINCIPIANTE GOY / 🕎 EXPERTO RABBI, mercado y capital.
+* Cada módulo es una página: Modo fácil, Time Machine, Entry Timer, 🔥 BURN OUT 🔥,
+  Chart Scanner, News Monitor, Alertas, Risk/Budget Manager, Order Executor, Bitácora,
+  Análisis técnico (gráfico + pestañas), Fundamentales cripto, Smart Money…
 
 La UI nunca se cae: cualquier error del motor se muestra como aviso.
 """
@@ -24,7 +23,9 @@ import streamlit as st
 from pathlib import Path as _Path  # noqa: E402
 
 _ICON = _Path(__file__).with_name("assets") / "icon.png"
-st.set_page_config(page_title="FG VIEW V1", page_icon=str(_ICON) if _ICON.exists() else "🟡", layout="wide",
+from engine.config import APP_TITLE as _APP_TITLE  # noqa: E402
+
+st.set_page_config(page_title=_APP_TITLE, page_icon=str(_ICON) if _ICON.exists() else "🟡", layout="wide",
                    initial_sidebar_state="expanded")
 
 from engine.backtester import Backtester, BacktestConfig  # noqa: E402
@@ -39,6 +40,8 @@ from ui.simulator_tab import render_simulator  # noqa: E402
 from ui.fgview_tab import render_fgview, render_journal  # noqa: E402
 from ui.easy_tab import render_easy, render_glossary  # noqa: E402
 from ui.ladder_tab import render_ladder  # noqa: E402
+from ui import israel_pages as ip  # noqa: E402
+from ui.mode import beginner, mode_switch  # noqa: E402
 
 ui.load_css()
 
@@ -97,6 +100,7 @@ def sidebar() -> tuple[AnalysisRequest, dict, bool]:
             f'<div class="fs-credit">{BUILD_TAG}</div></div></div>',
             unsafe_allow_html=True,
         )
+        mode_switch()
 
         st.markdown('<div class="fs-side-title">Mercado</div>', unsafe_allow_html=True)
         markets = [Market.CRYPTO, Market.STOCK, Market.ETF, Market.CME, Market.DEMO]
@@ -117,6 +121,11 @@ def sidebar() -> tuple[AnalysisRequest, dict, bool]:
             label = {"cme": "Contrato continuo", "demo": "Perpetuo (simulado)"}.get(market.value, "Contado (subyacente)")
             st.selectbox("Tipo de futuro", [label], disabled=True, key=f"contract_{market.value}")
 
+        equity = st.number_input("💰 Tu capital (USDT / USD)", min_value=10.0, value=float(SETTINGS.account_equity),
+                                 step=100.0, key="equity")
+
+        adv = st.expander("📊 Ajustes del análisis técnico", expanded=not beginner())
+        adv.__enter__()
         timeframe = st.segmented_control("Temporalidad", list(TIMEFRAMES), key="timeframe") or "1h"
         strategy_keys = [AUTO_KEY] + list(STRATEGIES)
         strategy = st.selectbox(
@@ -128,9 +137,8 @@ def sidebar() -> tuple[AnalysisRequest, dict, bool]:
         st.button("ANALIZAR AHORA", type="primary", width="stretch", on_click=_request_refresh)
         auto = st.toggle("Auto-análisis cada 60 s", key="auto")
 
+        adv.__exit__(None, None, None)
         with st.expander("Gestión de riesgo"):
-            equity = st.number_input("Capital (USDT / USD)", min_value=10.0, value=float(SETTINGS.account_equity),
-                                     step=100.0, key="equity")
             prof = get_profile(equity)
             st.caption(f"Perfil {prof.label}: riesgo sugerido {prof.risk_pct:g}% · apalancamiento máx. "
                        f"{prof.max_leverage:g}x. {prof.note} El plan lo aplica automáticamente.")
@@ -253,45 +261,97 @@ def main_panel(req: AnalysisRequest, layers: dict) -> None:
         ui.render_signal_card(result)
         ui.render_kpis(result)
 
-    tabs = st.tabs(["✨ Modo fácil", "📈 Crecimiento exponencial", "🟡 FG VIEW", "Simulador", "Bitácora", "Desglose",
-                    "Terminal futuros", "Contexto", "TradingView en vivo", "Backtest", "Historial", "Noticias"])
+    tabs = st.tabs(["Desglose", "Terminal futuros", "Contexto", "TradingView en vivo", "Backtest", "Historial",
+                    "Noticias", "Simulador"])
     with tabs[0]:
-        render_easy(get_services(), req)
-    with tabs[1]:
-        render_ladder(get_services())
-    with tabs[2]:
-        render_fgview(get_services(), req)
-        render_glossary("fg")
-    with tabs[3]:
-        render_simulator(simulator_prefill(result, req))
-    with tabs[4]:
-        render_journal(get_services().journal)
-    with tabs[5]:
         ui.render_factors(result)
-    with tabs[6]:
+    with tabs[1]:
         ui.render_trade_terminal(result, on_journal=journal_callback(pipeline, result))
-    with tabs[7]:
+    with tabs[2]:
         ui.render_context(result.context)
-    with tabs[8]:
+    with tabs[3]:
         ui.render_tradingview_widget(req.symbol, req.market, req.timeframe, req.contract, req.exchange)
-    with tabs[9]:
+    with tabs[4]:
         render_backtest_tab(pipeline, result, req)
-    with tabs[10]:
+    with tabs[5]:
         ui.render_history(pipeline.db, pipeline.risk)
-    with tabs[11]:
+    with tabs[6]:
         ui.render_news(pipeline.news, result.risk_check)
+    with tabs[7]:
+        render_simulator(simulator_prefill(result, req))
     ui.render_footer()
+
+
+def _safe(fn):
+    """Envuelve una página: cualquier error se muestra como aviso, la app nunca se cae."""
+
+    def run() -> None:
+        if fn.__name__ != "analysis":
+            ui.render_header(None)
+        try:
+            fn()
+        except Exception as exc:  # noqa: BLE001 - última red de seguridad
+            ui.render_banners([f"Error inesperado: {exc}"], "err")
+        ui.render_footer() if fn.__name__ != "analysis" else None
+
+    run.__name__ = fn.__name__
+    return run
+
+
+def build_pages(req: AnalysisRequest, layers: dict, auto: bool) -> dict[str, list]:
+    """Menú por secciones. Cada módulo es una página."""
+    svc = get_services
+
+    def analysis() -> None:
+        # En modo auto el panel se re-ejecuta cada 60 s sin recargar la barra lateral
+        st.fragment(main_panel, run_every=60 if auto else None)(req, layers)
+
+    def easy() -> None:
+        render_easy(svc(), req)
+        render_glossary("easy")
+
+    def fgview() -> None:
+        render_fgview(svc(), req)
+        render_glossary("fg")
+
+    P = lambda fn, title, icon, path, default=False: st.Page(_safe(fn), title=title, icon=icon,  # noqa: E731
+                                                              url_path=path, default=default)
+    page = lambda render: (lambda: render(svc(), req))  # noqa: E731
+    return {
+        "Operar": [
+            P(easy, "Modo fácil", "✨", "facil", default=True),
+            P(page(ip.render_time_machine), "Time Machine", "⏳", "time-machine"),
+            P(page(ip.render_entry_timer), "Entry Timer", "⏱️", "entry-timer"),
+            P(fgview, "FG VIEW pro", "🟡", "fgview"),
+            P(page(ip.render_burnout), "BURN OUT ⛔", "🔥", "burn-out"),
+        ],
+        "Escanear": [
+            P(page(ip.render_scanner), "Chart Scanner", "📡", "scanner"),
+            P(page(ip.render_news_monitor), "News Monitor", "📰", "news"),
+            P(page(ip.render_alerts), "Alertas", "🔔", "alertas"),
+        ],
+        "Riesgo y capital": [
+            P(page(ip.render_risk_manager), "Risk Manager", "🛡️", "riesgo"),
+            P(page(ip.render_budget), "Budget Manager", "💰", "budget"),
+            P(page(ip.render_executor), "Order Executor", "🤖", "executor"),
+            P(lambda: render_journal(svc().journal), "Bitácora", "📒", "bitacora"),
+        ],
+        "Contexto": [
+            P(analysis, "Análisis técnico", "📊", "analisis"),
+            P(page(ip.render_fundamentals), "Fundamentales cripto", "💎", "fundamentales"),
+            P(page(ip.render_smart_money), "Smart Money", "🐋", "smart-money"),
+        ],
+        "Herramientas": [
+            P(lambda: render_ladder(svc()), "Crecimiento exponencial", "📈", "exponencial"),
+            P(lambda: render_simulator(None), "Simulador", "🧮", "simulador"),
+        ],
+    }
 
 
 def main() -> None:
     _apply_query_params()
     req, layers, auto = sidebar()
-    # En modo auto el panel se re-ejecuta cada 60 s sin recargar la barra lateral
-    panel = st.fragment(main_panel, run_every=60 if auto else None)
-    try:
-        panel(req, layers)
-    except Exception as exc:  # noqa: BLE001 - última red de seguridad: la UI no se cae
-        ui.render_banners([f"Error inesperado: {exc}"], "err")
+    st.navigation(build_pages(req, layers, auto), position="sidebar", expanded=True).run()
 
 
 main()

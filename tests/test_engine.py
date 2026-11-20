@@ -504,3 +504,137 @@ def test_native_ladder_parity(fg):
         a, b = py_l.simulate(lc, 0.4, -0.3, protected), cpp_l.simulate(lc, 0.4, -0.3, protected)
         for k in a:
             assert a[k] == pytest.approx(b[k], nan_ok=True)
+
+
+# -----------------------------------------------------------------------------
+# FG ISRAEL VIEW Build 1: módulos 7–16 + BURN OUT
+# -----------------------------------------------------------------------------
+@pytest.fixture()
+def fgdb(tmp_path):
+    from engine.database import Database
+    from engine.fgview import FGServices
+
+    return FGServices.create(DataFeeder(), db=Database(tmp_path / "t.db"))
+
+
+def test_time_machine_parity_and_probabilities(fg):
+    from engine.fgview import native
+    from engine.fgview.timemachine import TimeMachine
+
+    df, _ = fg.history.get("DEMO/USDT", "demo", "5m", 30)
+    p = fg.planner.plan(1000, "BTC", "LONG", float(df["close"].iloc[-1]))
+    py = TimeMachine(sims=5000, use_native=False).run(p, df, 5)
+    total = py.p_sl + py.p_time + py.p_tp1
+    assert total == pytest.approx(100, abs=0.01) and py.p_tp1 >= py.p_tp2 >= py.p_tp3
+    assert py.verdict in ("OPERAR", "ESPERAR", "NO OPERAR") and "TIME MACHINE" in py.text()
+    if native.AVAILABLE:
+        cpp = TimeMachine(sims=5000, use_native=True).run(p, df, 5)
+        assert (cpp.p_tp1, cpp.p_sl, cpp.p_liq) == (py.p_tp1, py.p_sl, py.p_liq)
+        assert cpp.ev == pytest.approx(py.ev) and cpp.var95 == pytest.approx(py.var95)
+
+
+def test_burnout_rules(fgdb):
+    from datetime import datetime, timedelta, timezone
+
+    bo = fgdb.burnout
+    with pytest.raises(ValueError, match="PROHIBIDO"):
+        bo.build_plan("DOGE/USDT", "LONG", 0.1, None, 10)
+    assert bo.max_bag(1000) == 50 and bo.max_bag(100) == 10
+    assert bo.fund(60, 1000) is not None  # Más del 5%
+    assert bo.fund(20, 1000) is None and bo.fund(5, 1000) is not None  # Recarga el mismo día: prohibido
+    p = bo.build_plan("BTC/USDT", "LONG", 100_000, 120, 20)
+    assert 50 <= p.leverage <= 100 and 0.15 <= p.sl_pct <= 0.25
+    assert abs(p.entry - p.liquidation) >= 2 * abs(p.entry - p.stop_loss)  # SL antes de la liquidación
+    b = fgdb.burnout.build_plan("SOL/USDT", "SHORT", 150, None, 20)
+    assert 25 <= b.leverage <= 50
+    assert bo.gate(70, None)  # Señal < 80 y sin Time Machine -> no se activa
+    assert not bo.confirmed("confirmo ya") and bo.confirmed(" confirmo ")
+    now = datetime.now(timezone.utc)
+    bo.register_result(-5, "BTC", now)
+    bo.register_result(-5, "BTC", now)
+    assert any("intentos" in r for r in bo.gate(90, None, now=now))
+    bo.register_result(-50, "BTC", now)  # La bolsa llega a $0 -> bloqueo 7 días
+    assert bo.bag().balance == 0 and bo.locked(now) and not bo.locked(now + timedelta(days=8))
+
+
+def test_entry_timer_rules():
+    from datetime import datetime, timezone
+
+    from engine.fgview.timer import EntryTimer
+
+    t = EntryTimer()
+    s = t.check(datetime(2026, 1, 6, 14, 0, 10, tzinfo=timezone.utc))  # 09:00 NY, recién cerrada la vela
+    assert s.in_entry_window and s.session == "Apertura de Nueva York" and s.can_enter
+    assert not t.check(datetime(2026, 1, 6, 14, 2, 30, tzinfo=timezone.utc)).can_enter  # Mitad de vela
+    assert not t.check(datetime(2026, 1, 6, 7, 55, 5, tzinfo=timezone.utc)).can_enter  # 5 min antes del funding
+    c = t.check(datetime(2026, 1, 6, 14, 0, 10, tzinfo=timezone.utc), ideal_entry=100, price=100.5, atr=1)
+    assert c.cancelled and not c.can_enter
+
+
+def test_risk_manager_limits(fgdb):
+    rm, book = fgdb.risk, fgdb.positions
+    book.add({"coin": "BTC", "direction": "LONG", "entry": 100, "stop_loss": 99, "liquidation": 90})
+    r = rm.check("ETH", "LONG", 100, 99, 90, 1000, [])
+    assert not r.allowed and any("correlacionadas" in b for b in r.blocks)
+    assert rm.check("ETH", "SHORT", 100, 99, 90, 1000, []).allowed
+    assert not rm.check("SOL", "SHORT", 100, 99, 98, 1000, []).allowed  # Liquidación < 3× SL
+    book.add({"coin": "SOL", "direction": "SHORT", "entry": 100, "stop_loss": 101, "liquidation": 110})
+    assert any("máximo 2" in b for b in rm.check("XRP", "SHORT", 100, 101, 110, 1000, []).blocks)
+
+
+def test_budget_manager_drawdown_and_withdrawal(fgdb):
+    bm = fgdb.budget
+    bm.set_start(1000)
+    dd = bm.status([{"pnl": -60}, {"pnl": -50}])
+    assert dd.defensive and dd.risk_pct == dd.base_risk_pct / 2
+    rec = bm.status([{"pnl": -110}, {"pnl": 60}])  # +6.7% desde el mínimo -> sale del modo defensivo
+    assert not rec.defensive
+    up = bm.status([{"pnl": 300}])
+    assert up.withdraw_suggestion == pytest.approx(60)  # 20% de 300 de ganancia
+
+
+def test_executor_paper_flow_and_burn_hook(fgdb):
+    import pandas as pd
+
+    fgdb.burnout.fund(20, 1000)
+    plan = fgdb.burnout.build_plan("BTC/USDT", "LONG", 100.0, None, 20)
+    t = fgdb.executor.build_ticket(plan, "DEMO/USDT", "demo", strategy="BURN OUT", score=90)
+    assert fgdb.executor.submit(t, confirmed=False)["status"] == "pending"
+    assert fgdb.executor.submit(t, confirmed=True, mode="live")["status"] == "rejected"  # Real desactivado
+    pos = fgdb.executor.submit(t, confirmed=True)["position"]
+    idx = pd.date_range(pd.Timestamp(pos["opened_at"]).floor("min") + pd.Timedelta(minutes=1), periods=3, freq="1min")
+    bars = pd.DataFrame({"open": 100.0, "high": [100.1, 100.0, 100.0], "low": [99.0, 99.0, 99.0],
+                         "close": 99.5}, index=idx)
+    res = fgdb.executor.paper.evaluate(pos, bars)
+    assert res["reason"] == "Stop Loss" and res["pnl"] == pytest.approx(plan.sl_pnl)
+    fgdb.executor.close(pos["id"], res["exit_price"], res["pnl"], res["reason"])
+    assert fgdb.burnout.bag().balance == pytest.approx(20 + plan.sl_pnl) and not fgdb.positions.all()
+    assert fgdb.journal.entries()[-1]["pnl"] == pytest.approx(plan.sl_pnl)
+
+
+def test_scanner_and_news_classification(fg):
+    from engine.fgview.newsmonitor import NewsMonitor
+
+    top, hits = fg.scanner.scan(market="demo")
+    assert hits and 0 <= hits[0].score <= 100
+    assert NewsMonitor.classify("Major exchange hack: $200M stolen")[0] == "alto"
+    assert NewsMonitor.classify("Token unlock next week")[0] == "medio"
+
+
+def test_price_alerts_sharp_move_and_liq(fgdb, monkeypatch):
+    import pandas as pd
+
+    from engine.data_feeder import MarketData
+
+    idx = pd.date_range("2026-01-01", periods=10, freq="1min", tz="UTC")
+    df = pd.DataFrame({"open": 100.0, "high": 101.0, "low": 99.0, "volume": 1.0,
+                       "close": [100] * 5 + [100, 101, 102, 103, 104]}, index=idx)
+    md = MarketData(df=df, symbol="DEMO/USDT", resolved_symbol="DEMO/USDT", market="demo", timeframe="1m",
+                    source="test", is_futures=True)
+    monkeypatch.setattr(fgdb.alerts.feeder, "get_market_data", lambda *a, **k: md)
+    fgdb.alerts.add("DEMO", "sharp_move", market="demo")
+    fgdb.positions.add({"coin": "DEMO", "market": "demo", "direction": "LONG", "entry": 106, "stop_loss": 105,
+                        "liquidation": 103.5})
+    kinds = {f.kind for f in fgdb.alerts.check(send=False)}
+    assert {"sharp_move", "liq_near"} <= kinds
+    assert not fgdb.alerts.check(send=False)  # Enfriamiento: no repite enseguida

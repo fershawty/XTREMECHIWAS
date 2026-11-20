@@ -171,7 +171,7 @@ def render_empty(title: str, text: str) -> None:
 def render_footer() -> None:
     _html(
         f'<div class="fs-footer"><span>{APP_NAME} · {esc(BUILD_TAG)}</span>'
-        '<span>Herramienta de análisis. No ejecuta órdenes ni es consejo financiero. '
+        '<span>Herramienta de análisis. Solo ejecuta órdenes si tú confirmas (modo papel por defecto). No es consejo financiero. '
         'Los futuros apalancados pueden liquidar tu cuenta.</span></div>'
     )
 

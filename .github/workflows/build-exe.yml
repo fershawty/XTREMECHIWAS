@@ -1,6 +1,6 @@
-# Compila FGView.exe en un servidor Windows de GitHub en cada push.
-# Descarga: pestaña "Actions" del repositorio -> última ejecución verde -> "Artifacts" -> FGView-Windows
-name: Build FGView.exe
+# Compila FGIsraelView.exe en un servidor Windows de GitHub en cada push.
+# Descarga: pestaña "Actions" del repositorio -> última ejecución verde -> "Artifacts" -> FGIsraelView-Windows
+name: Build FGIsraelView.exe
 
 on:
   push:
@@ -80,23 +80,23 @@ jobs:
         shell: pwsh
         run: |
           foreach ($d in "_tcl_data", "_tk_data") {
-            $p = "dist\FGView\_internal\$d"
+            $p = "dist\FGIsraelView\_internal\$d"
             if (-not (Test-Path $p)) { Write-Error "Falta $p en el paquete"; exit 1 }
             "{0}: {1} archivos" -f $d, (Get-ChildItem $p -Recurse -File).Count
           }
       - name: Autotest del ejecutable
         shell: pwsh
         run: |
-          $p = Start-Process -FilePath "dist\FGView\FGView.exe" -ArgumentList "--selftest" -Wait -PassThru
-          Get-Content "dist\FGView\data\selftest.txt" -ErrorAction SilentlyContinue
-          Get-Content "dist\FGView\data\launcher.log" -Tail 40 -ErrorAction SilentlyContinue
+          $p = Start-Process -FilePath "dist\FGIsraelView\FGIsraelView.exe" -ArgumentList "--selftest" -Wait -PassThru
+          Get-Content "dist\FGIsraelView\data\selftest.txt" -ErrorAction SilentlyContinue
+          Get-Content "dist\FGIsraelView\data\launcher.log" -Tail 40 -ErrorAction SilentlyContinue
           if ($p.ExitCode -ne 0) { Write-Error "El autotest del .exe falló"; exit 1 }
           # Entregamos la carpeta limpia (los datos y el .env se crean en el primer arranque del usuario)
-          Remove-Item -Recurse -Force "dist\FGView\data", "dist\FGView\.env" -ErrorAction SilentlyContinue
-      # Se sube la carpeta tal cual: GitHub la entrega en UN solo .zip con FGView/ dentro
+          Remove-Item -Recurse -Force "dist\FGIsraelView\data", "dist\FGIsraelView\.env" -ErrorAction SilentlyContinue
+      # Se sube la carpeta tal cual: GitHub la entrega en UN solo .zip con FGIsraelView/ dentro
       - uses: actions/upload-artifact@v4
         with:
-          name: FGView-Windows
+          name: FGIsraelView-Windows
           path: dist/
           retention-days: 30
 
@@ -159,7 +159,7 @@ jobs:
         run: $PY -m PyInstaller futures_scope.spec --noconfirm
       - name: Comprobar Tcl/Tk empaquetado y compatibilidad con Monterey (macOS 12)
         run: |
-          APP=dist/FGView.app/Contents
+          APP=dist/FGIsraelView.app/Contents
           test -f $APP/Frameworks/_tcl_data/init.tcl || test -f $APP/Resources/_tcl_data/init.tcl || { echo "Falta _tcl_data"; exit 1; }
           test -f $APP/Frameworks/_tk_data/tk.tcl || test -f $APP/Resources/_tk_data/tk.tcl || { echo "Falta _tk_data"; exit 1; }
           echo "Tcl/Tk empaquetado OK"
@@ -167,7 +167,7 @@ jobs:
           import pathlib, re, subprocess, sys
           MAGIC = {b"\xcf\xfa\xed\xfe", b"\xce\xfa\xed\xfe", b"\xca\xfe\xba\xbe", b"\xfe\xed\xfa\xcf"}
           worst, worst_file, count, bad = (0, 0), "", 0, []
-          for p in pathlib.Path("dist/FGView.app").rglob("*"):
+          for p in pathlib.Path("dist/FGIsraelView.app").rglob("*"):
               if p.is_symlink() or not p.is_file():
                   continue
               with open(p, "rb") as fh:
@@ -193,7 +193,7 @@ jobs:
               print("  exige más que Monterey:", b)
           if bad:
               print("--- Binarios que enlazan libcrypto/libssl:")
-              for p in pathlib.Path("dist/FGView.app").rglob("*.so"):
+              for p in pathlib.Path("dist/FGIsraelView.app").rglob("*.so"):
                   deps = subprocess.run(["otool", "-L", str(p)], capture_output=True, text=True).stdout
                   hits = [l.strip() for l in deps.splitlines()[1:] if "libcrypto" in l or "libssl" in l]
                   if hits:
@@ -202,22 +202,22 @@ jobs:
           PY
       - name: Autotest de la app
         run: |
-          dist/FGView.app/Contents/MacOS/FGView --selftest
+          dist/FGIsraelView.app/Contents/MacOS/FGIsraelView --selftest
           cat "$HOME/Library/Application Support/FGView/data/selftest.txt" || true
       - name: Crear .dmg
         run: |
           mkdir dmg
-          ditto dist/FGView.app dmg/FGView.app
+          ditto dist/FGIsraelView.app dmg/FGIsraelView.app
           ln -s /Applications dmg/Aplicaciones
           for i in 1 2 3; do
-            hdiutil create -volname "FG VIEW" -srcfolder dmg -ov -format UDZO "FGView-macOS-${{ matrix.arch }}.dmg" && break
+            hdiutil create -volname "FG ISRAEL VIEW" -srcfolder dmg -ov -format UDZO "FGIsraelView-macOS-${{ matrix.arch }}.dmg" && break
             sleep 5
           done
           ls -lh *.dmg
       - uses: actions/upload-artifact@v4
         with:
-          name: FGView-macOS-${{ matrix.arch }}
-          path: FGView-macOS-${{ matrix.arch }}.dmg
+          name: FGIsraelView-macOS-${{ matrix.arch }}
+          path: FGIsraelView-macOS-${{ matrix.arch }}.dmg
           retention-days: 30
 
   release:
@@ -233,42 +233,38 @@ jobs:
           path: art
       - name: Preparar archivos
         run: |
-          cd art/FGView-Windows && zip -qr ../../FGView-V1-Windows.zip FGView && cd ../..
-          cp art/FGView-macOS-intel/FGView-macOS-intel.dmg FGView-V1-macOS-Intel.dmg
+          cd art/FGIsraelView-Windows && zip -qr ../../FGIsraelView-Build1-Windows.zip FGIsraelView && cd ../..
+          cp art/FGIsraelView-macOS-intel/FGIsraelView-macOS-intel.dmg FGIsraelView-Build1-macOS-Intel.dmg
           ls -lh *.zip *.dmg
       - name: Crear Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           cat > notes.md <<'MD'
-          ## FG VIEW V1 · BY GUS X FER X ALFREDOBONUS
+          ## FG ISRAEL VIEW · BUILD 1 · BY GUS X FER X ALFREDOBONUS
 
-          Recomendador de scalping para futuros cripto (operaciones de 15–30 min).
+          Recomendador de scalping para futuros cripto (operaciones de 15–30 min), ahora con 10 módulos nuevos y rediseño.
 
           **Descargas**
-          - **Windows**: `FGView-V1-Windows.zip` → descomprime y abre `FGView\FGView.exe`
-          - **Mac Intel (macOS 12 Monterey o superior)**: `FGView-V1-macOS-Intel.dmg` → arrastra a Aplicaciones; la primera vez Control + clic → Abrir
+          - **Windows**: `FGIsraelView-Build1-Windows.zip` → descomprime y abre `FGIsraelView\FGIsraelView.exe`
+          - **Mac Intel (macOS 12 Monterey o superior)**: `FGIsraelView-Build1-macOS-Intel.dmg` → arrastra a Aplicaciones; la primera vez Control + clic → Abrir
 
-          **Novedades v3.4**
-          - ⚙️ Núcleo C++ (pybind11): la gestión TP 50/30/20, la probabilidad histórica y el Monte Carlo del crecimiento exponencial corren en C++ (~60× más rápido) con los mismos resultados que Python (tests de paridad). Si el núcleo no está disponible, la app usa Python automáticamente.
-          - 🧩 Proyecto listo para Visual Studio Code: Python + C++ con POO, tareas para compilar el núcleo, depurar y probar.
-          - 🙌 Créditos: GUS X FER X ALFREDOBONUS.
+          **Novedades Build 1**
+          - 🎓/🕎 Interruptor **PRINCIPIANTE GOY / EXPERTO RABBI**: explicaciones paso a paso o todo el detalle técnico.
+          - 🧭 Rediseño: menú lateral por secciones (Operar, Escanear, Riesgo y capital, Contexto, Herramientas).
+          - ⏳ **Time Machine**: 100,000 simulaciones Monte Carlo (bootstrap por bloques de 15–30 min, 90 días de velas de 1 min, solo tramos con volatilidad ±20% de la actual) → P(TP1/TP2/TP3/SL/tiempo), expectativa y VaR 95% con veredicto. Núcleo C++.
+          - 📡 **Chart Scanner**: niveles A/B/C en 5m/15m/1h (cruce EMA 9/21, rupturas de 1h, rebote VWAP, divergencias RSI, picos de volumen, squeeze) → top 5 por puntuación, auto cada minuto.
+          - 📰 **News Monitor**: calendario + noticias cripto + anuncios de exchanges con impacto y sentimiento; bloqueo ±30 min por impacto alto.
+          - ⏱️ **Entry Timer**: cierre de vela de 5 min, sesiones de Londres/NY, aviso de funding y cancelación si el precio se aleja > 0.3 × ATR.
+          - 🛡️ **Risk Manager**: stop diario, máximo 2 posiciones, bloqueo de posiciones correlacionadas y liquidación ≥ 3× el SL.
+          - 💰 **Budget Manager**: saldo real, riesgo a la mitad tras drawdown del 10% y sugerencia de retiro del 20% cada +25%.
+          - 🤖 **Order Executor** semiautomático: modo papel por defecto; real en Binance/Bybit solo con LIVE_TRADING_ENABLED=true, API key sin retiros y con lista de IPs (verificado con el exchange), margen aislado, SL y TPs reduce-only al entrar.
+          - 🔔 **Alertas**: precio, cruce de EMAs, movimiento brusco y liquidación cerca por Telegram/webhook.
+          - 💎 **Fundamentales cripto** (fees de DefiLlama, desbloqueos > 2%) y 🐋 **Smart Money** (Congreso de EE. UU. y ballenas) como contexto.
+          - 🔥 **BURN OUT** (⛔ peligro extremo): bolsa de quema ≤ 5% del capital, 50–100x en BTC/ETH y 25–50x en nivel B, prohibido en memecoins, solo con P(TP1) ≥ 65% y señal ≥ 80, máximo 2 intentos al día, bloqueo de 7 días si llega a $0 y confirmación escribiendo CONFIRMO.
 
-          **Incluye**
-          - 🏗️ Motor rediseñado con POO: una sola lógica para filtros y gestión (lo que se valida es lo que se usa), Modo fácil hasta 4-6× más rápido con descarga en paralelo y caché compartida.
-          - 🔬 Validación histórica: ¿funcionó la estrategia en los últimos 3/7/14 días? Win rate, profit factor y resultados por confianza, sesión y filtro.
-          - 🎯 ROI objetivo 10/15/20%: movimiento y apalancamiento necesarios y su probabilidad real.
-          - 📈 Crecimiento exponencial: reto escalera SIN liquidaciones (liquidación ≥ 3× más lejos que el SL, caja fuerte, freno tras 2 pérdidas) y comparación con la escalera clásica por Monte Carlo.
-          - ✨ Modo fácil: solo pones tu capital y te dice la operación más recomendada en palabras simples, con probabilidad histórica, semáforo y pasos en Binance. Glosario de términos.
-          - Mac compatible desde macOS 12 Monterey.
-          - Pestaña 🟡 FG VIEW: plan por capital (riesgo y margen máximo), niveles A/B/C, SL dinámico por ATR con TPs escalados, apalancamiento automático con liquidación ≥ 3× el SL, 6 filtros + bloqueos y confianza 0–100.
-          - R:R bruto y neto de comisiones; gestión TP 50/30/20, salida a 30 min y stop diario.
-          - Bitácora con win rate, profit factor, drawdown y efectividad por filtro.
-          - Simulador LONG/SHORT con comparativa 3x–50x y escalera de precios.
-          - Nueva identidad negro y dorado.
-
-          _Herramienta de análisis educativa: no ejecuta órdenes ni es asesoría financiera._
+          _Herramienta educativa: solo ejecuta órdenes si tú confirmas (papel por defecto). No es asesoría financiera._
           MD
           TAG="${{ inputs.release_tag }}"; TAG="${TAG:-$GITHUB_REF_NAME}"
-          gh release create "$TAG" FGView-V1-Windows.zip FGView-V1-macOS-Intel.dmg --target "$GITHUB_SHA" \
-            --repo "$GITHUB_REPOSITORY" --title "FG VIEW V1 ($TAG)" --notes-file notes.md --latest
+          gh release create "$TAG" FGIsraelView-Build1-Windows.zip FGIsraelView-Build1-macOS-Intel.dmg --target "$GITHUB_SHA" \
+            --repo "$GITHUB_REPOSITORY" --title "FG ISRAEL VIEW Build 1 ($TAG)" --notes-file notes.md --latest

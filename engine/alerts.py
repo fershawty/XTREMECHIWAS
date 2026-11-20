@@ -68,7 +68,10 @@ class AlertManager:
 
     def send(self, symbol: str, timeframe: str, signal, plan) -> bool:
         """Envía la alerta. Devuelve True si al menos un canal externo la recibió."""
-        text = self.format_message(symbol, timeframe, signal, plan)
+        return self.send_text(self.format_message(symbol, timeframe, signal, plan))
+
+    def send_text(self, text: str) -> bool:
+        """Envía un texto libre por todos los canales activos (alertas de precio, Burn Out…)."""
         log.warning("ALERTA\n%s", text)
         delivered = False
         if "telegram" in self.channels:

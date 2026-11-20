@@ -34,3 +34,6 @@ dist/
 # Sistema
 .DS_Store
 Thumbs.db
+
+# Historial largo descargado por el Time Machine
+data/history/

@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdint>
 #include <cmath>
 #include <stdexcept>
 #include <vector>
@@ -224,9 +225,88 @@ private:
     double min_stake_;
 };
 
+// -----------------------------------------------------------------------------
+// TIME MACHINE (Módulo 7): Monte Carlo por bloques de velas históricas
+// -----------------------------------------------------------------------------
+// Cada simulación encadena bloques de velas reales (retornos relativos al cierre
+// anterior) elegidos al azar entre los tramos con volatilidad parecida a la actual,
+// y gestiona el plan con las mismas reglas que TradeManager. Python genera los
+// sorteos (mismos números para C++ y Python) y aquí solo se recorren los caminos.
+class TimeMachine {
+public:
+    // Devuelve (pnl, tps_hit, reason, liq_hit) por simulación
+    py::tuple run(int side, double sl, std::vector<double> tp, std::vector<double> tp_pnl, double sl_pnl, double fees,
+                  double notional, double fee, double liq, Arr rel_h, Arr rel_l, Arr rel_c,
+                  py::array_t<int64_t, py::array::c_style | py::array::forcecast> block_starts,
+                  py::array_t<int64_t, py::array::c_style | py::array::forcecast> block_lens,
+                  py::array_t<int64_t, py::array::c_style | py::array::forcecast> horizons) const {
+        if (tp.size() != 3 || tp_pnl.size() != 3) throw std::invalid_argument("se esperan 3 TPs");
+        if (block_starts.ndim() != 2 || block_lens.ndim() != 2) throw std::invalid_argument("bloques deben ser 2D");
+        const auto sims = static_cast<long>(block_starts.shape(0));
+        const auto nb = static_cast<long>(block_starts.shape(1));
+        const auto n = static_cast<long>(rel_c.size());
+        if (static_cast<long>(horizons.size()) != sims || block_lens.shape(0) != sims || block_lens.shape(1) != nb)
+            throw std::invalid_argument("dimensiones de sorteos inconsistentes");
+        const double *rh = rel_h.data(), *rl = rel_l.data(), *rc = rel_c.data();
+        const int64_t *bs = block_starts.data(), *bl = block_lens.data(), *hz = horizons.data();
+        const double s = side;
+        const std::array<double, 3> tp_px = {1 + s * tp[0], 1 + s * tp[1], 1 + s * tp[2]};
+        const std::array<double, 3> stops = {1 - s * sl, 1 + s * 2 * fee, tp_px[0]};
+        const std::array<double, 3> remaining = {1.0, 0.5, 0.2};
+        const double liq_px = 1 - s * liq;
+        py::array_t<double> pnl_out(sims);
+        py::array_t<int> tps_out(sims), reason_out(sims), liq_out(sims);
+        auto P = pnl_out.mutable_unchecked<1>();
+        auto T = tps_out.mutable_unchecked<1>();
+        auto R = reason_out.mutable_unchecked<1>();
+        auto L = liq_out.mutable_unchecked<1>();
+        {
+            py::gil_scoped_release release;
+            for (long k = 0; k < sims; ++k) {
+                double p = 1.0, pnl = 0.0;
+                int stage = 0, reason = 4, tps = 0, liq_hit = 0;
+                bool done = false;
+                long b = 0, off = 0;
+                for (long t = 0; t < hz[k]; ++t) {
+                    if (off >= bl[k * nb + b]) {
+                        if (b + 1 < nb) ++b;
+                        off = 0;
+                    }
+                    long i = bs[k * nb + b] + off;
+                    ++off;
+                    if (i < 0 || i >= n) i = n - 1;
+                    const double hi = p * (1 + rh[i]), lo = p * (1 + rl[i]);
+                    p *= 1 + rc[i];
+                    if (stage == 0 && (side == 1 ? lo <= liq_px : hi >= liq_px)) liq_hit = 1;
+                    if (side == 1 ? lo <= stops[stage] : hi >= stops[stage]) {  // El stop gana en empate
+                        if (stage == 0) { pnl += sl_pnl; reason = 0; tps = 0; }
+                        else if (stage == 1) { reason = 1; tps = 1; }
+                        else { pnl += notional * 0.2 * tp[0] - fees * 0.2; reason = 2; tps = 2; }
+                        done = true;
+                        break;
+                    }
+                    if (side == 1 ? hi >= tp_px[stage] : lo <= tp_px[stage]) {
+                        pnl += tp_pnl[stage];
+                        ++stage;
+                        if (stage == 3) { reason = 3; tps = 3; done = true; break; }
+                    }
+                }
+                if (!done) {  // Salida por tiempo con lo que quede abierto
+                    const double rem = remaining[stage];
+                    pnl += notional * rem * s * (p - 1.0) - fees * rem;
+                    tps = stage;
+                    reason = 4;
+                }
+                P(k) = pnl; T(k) = tps; R(k) = reason; L(k) = liq_hit;
+            }
+        }
+        return py::make_tuple(pnl_out, tps_out, reason_out, liq_out);
+    }
+};
+
 PYBIND11_MODULE(fgcore, m) {
     m.doc() = "Núcleo C++ de FG VIEW: gestión de operaciones y Monte Carlo (POO, pybind11)";
-    m.attr("__version__") = "1.0.0";
+    m.attr("__version__") = "1.1.0";
     py::class_<TradeManager>(m, "TradeManager")
         .def(py::init<int>(), py::arg("horizon"))
         .def_property_readonly("horizon", &TradeManager::horizon)
@@ -240,4 +320,9 @@ PYBIND11_MODULE(fgcore, m) {
         .def_property_readonly("min_stake", &LadderSimulator::min_stake)
         .def("simulate", &LadderSimulator::simulate, py::arg("wins"), py::arg("capital"), py::arg("target"),
              py::arg("roi_win"), py::arg("roi_loss"), py::arg("vault_pct"), py::arg("protected_mode"));
+    py::class_<TimeMachine>(m, "TimeMachine")
+        .def(py::init<>())
+        .def("run", &TimeMachine::run, py::arg("side"), py::arg("sl"), py::arg("tp"), py::arg("tp_pnl"),
+             py::arg("sl_pnl"), py::arg("fees"), py::arg("notional"), py::arg("fee"), py::arg("liq"), py::arg("rel_h"),
+             py::arg("rel_l"), py::arg("rel_c"), py::arg("block_starts"), py::arg("block_lens"), py::arg("horizons"));
 }
