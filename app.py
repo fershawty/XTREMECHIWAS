@@ -296,6 +296,8 @@ def chart_strip(req: AnalysisRequest, layers: dict) -> None:
         ui.render_banners([result.error or "Error desconocido"], "err")
         return
     ui.render_banners(result.warnings[:1])
+    if req.market == "crypto":  # Precarga el historial del Time Machine en segundo plano
+        get_services().history.prefetch(req.symbol, "crypto", ("5m", "1m"), 90, req.exchange)
     if result.is_new_alert:
         st.toast(f"🚨 {result.signal.direction} {req.symbol} · score {result.signal.score:.0f}/100", icon="🚨")
     col_chart, col_card = st.columns([3.1, 1.15], gap="medium")

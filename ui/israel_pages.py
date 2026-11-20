@@ -55,12 +55,34 @@ def _banner(text: str, color: str = RED, bg: str = "rgba(255,59,59,.10)") -> Non
 
 def run_time_machine(svc, plan, symbol: str, market: str, exchange: str | None, days: int = 90,
                      timeframe: str = "1m", sims: int = 100_000) -> TimeMachineResult:
-    """Descarga (o lee de caché) el historial y corre el Time Machine para un plan."""
-    df, _src = svc.history.get(symbol, market, timeframe, days, exchange=exchange)
-    if timeframe == "1m" and len(df) < 2000:  # Yahoo solo da 7 días de 1m: se pasa a 5m
-        df, _src = svc.history.get(symbol, market, "5m", days, exchange=exchange)
+    """
+    Descarga (o lee de caché) el historial y corre el Time Machine para un plan.
+    Si es la primera vez y aún no hay velas de 1 min guardadas, usa las de 5 min (18
+    peticiones, segundos) y deja bajando las de 1 min en segundo plano para la próxima.
+    """
+    import time as _t
+
+    notes = []
+    if market == "crypto" and timeframe == "1m" and not svc.history.has_cache(symbol, "1m", exchange):
+        svc.history.prefetch(symbol, market, ("1m",), days, exchange)
         timeframe = "5m"
-    return svc.time_machine.run(plan, df, bar_minutes=int(timeframe[:-1]), sims=sims)
+        notes.append("Primera vez con esta cripto: se usaron velas de 5 min para darte el resultado YA. Las de 1 min "
+                     "se están descargando en segundo plano y se usarán la próxima vez (más precisión).")
+    bar = st.progress(0.0, text="Preparando historial…")
+    t0 = _t.perf_counter()
+    try:
+        df, _src = svc.history.get(symbol, market, timeframe, days, exchange=exchange,
+                                   progress=lambda f, txt: bar.progress(min(1.0, f), text=txt))
+        if timeframe == "1m" and len(df) < 2000:  # Yahoo solo da 7 días de 1m: se pasa a 5m
+            df, _src = svc.history.get(symbol, market, "5m", days, exchange=exchange)
+            timeframe = "5m"
+    finally:
+        bar.empty()
+    load = _t.perf_counter() - t0
+    res = svc.time_machine.run(plan, df, bar_minutes=int(timeframe[:-1]), sims=sims)
+    res.load_s = load
+    res.notes = notes + res.notes
+    return res
 
 
 def _tm_block(res: TimeMachineResult) -> None:

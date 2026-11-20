@@ -20,6 +20,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+import time
+
 import numpy as np
 import pandas as pd
 
@@ -47,6 +49,8 @@ class TimeMachineResult:
     days: float
     backend: str
     notes: list[str] = field(default_factory=list)
+    sim_s: float = 0.0  # Segundos de simulación
+    load_s: float = 0.0  # Segundos cargando el historial (lo rellena quien descarga)
 
     @property
     def verdict(self) -> str:
@@ -69,7 +73,8 @@ class TimeMachineResult:
             f"**−{fmt_usd(max(0.0, self.var95))}**",
             f"Veredicto: {self.verdict_icon} **{self.verdict}**",
             f"_Estimación con {self.days:.0f} días de velas de {self.bars} ({self.eligible:,} puntos de partida con "
-            f"volatilidad ±{self.regime_band:.0f}% de la actual · motor {self.backend}). No es una garantía._",
+            f"volatilidad ±{self.regime_band:.0f}% de la actual · motor {self.backend} · historial {self.load_s:.1f} s · "
+            f"simulación {self.sim_s:.2f} s). No es una garantía._",
         ])
 
     def beginner_text(self) -> str:
@@ -142,6 +147,7 @@ class TimeMachine:
         if not self.native and sims > PY_MAX_SIMS:
             notes.append(f"Núcleo C++ no disponible: {PY_MAX_SIMS:,} simulaciones en lugar de {sims:,}.")
             sims = PY_MAX_SIMS
+        t0 = time.perf_counter()
         rel_h, rel_l, rel_c, atr_pct = self.prepare(df, bar_minutes)
         bmin, bmax = max(1, round(15 / bar_minutes)), max(1, round(30 / bar_minutes))
         starts, band, extra = self.eligible_starts(atr_pct, bmax)
@@ -169,7 +175,7 @@ class TimeMachine:
             p_tp3=float((tps >= 3).mean() * 100), p_sl=float(((tps == 0) & (reason == 0)).mean() * 100),
             p_time=float(((tps == 0) & (reason == 4)).mean() * 100), p_liq=float(np.asarray(liq).mean() * 100),
             ev=float(np.mean(pnl)), var95=float(-np.percentile(pnl, 5)), eligible=len(starts), regime_band=band,
-            bars=f"{bar_minutes}m", days=days, backend=self.backend, notes=notes)
+            bars=f"{bar_minutes}m", days=days, backend=self.backend, notes=notes, sim_s=time.perf_counter() - t0)
 
     @staticmethod
     def _walk_python(p: dict, rh, rl, rc, bs, bl, hz):
