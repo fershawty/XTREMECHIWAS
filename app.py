@@ -282,12 +282,44 @@ def main_panel(req: AnalysisRequest, layers: dict) -> None:
     ui.render_footer()
 
 
-def _safe(fn):
-    """Envuelve una página: cualquier error se muestra como aviso, la app nunca se cae."""
+def chart_strip(req: AnalysisRequest, layers: dict) -> None:
+    """
+    Gráfica + recomendación de operación fija arriba de TODAS las páginas.
+    Usa el mismo análisis (y la misma caché) que la página «Gráfica y señal».
+    """
+    pipeline = get_pipeline()
+    force = bool(st.session_state.pop("_force_refresh", False))
+    with st.spinner("Analizando el mercado…"):
+        result = pipeline.run(req, force_refresh=force)
+    ui.render_header(result)
+    if not result.ok:
+        ui.render_banners([result.error or "Error desconocido"], "err")
+        return
+    ui.render_banners(result.warnings[:1])
+    if result.is_new_alert:
+        st.toast(f"🚨 {result.signal.direction} {req.symbol} · score {result.signal.score:.0f}/100", icon="🚨")
+    col_chart, col_card = st.columns([3.1, 1.15], gap="medium")
+    with col_chart:
+        try:
+            fig = ui.build_price_chart(result, layers, height=500)
+            st.plotly_chart(fig, width="stretch", key="top_chart",
+                            config={"displayModeBar": False, "scrollZoom": True})
+        except Exception as exc:  # noqa: BLE001 - el gráfico nunca debe tumbar la UI
+            ui.render_banners([f"No se pudo dibujar el gráfico: {exc}"], "err")
+    with col_card:
+        ui.render_signal_card(result)
+    st.divider()
+
+
+def _safe(fn, req: AnalysisRequest, layers: dict, auto: bool):
+    """Envuelve una página: gráfica fija arriba y cualquier error como aviso (la app nunca se cae)."""
 
     def run() -> None:
         if fn.__name__ != "analysis":
-            ui.render_header(None)
+            try:  # En modo auto la gráfica se refresca cada 60 s sin recargar el módulo de abajo
+                st.fragment(chart_strip, run_every=60 if auto else None)(req, layers)
+            except Exception as exc:  # noqa: BLE001
+                ui.render_banners([f"No se pudo dibujar la gráfica: {exc}"], "err")
         try:
             fn()
         except Exception as exc:  # noqa: BLE001 - última red de seguridad
@@ -314,7 +346,7 @@ def build_pages(req: AnalysisRequest, layers: dict, auto: bool) -> dict[str, lis
         render_fgview(svc(), req)
         render_glossary("fg")
 
-    P = lambda fn, title, icon, path, default=False: st.Page(_safe(fn), title=title, icon=icon,  # noqa: E731
+    P = lambda fn, title, icon, path, default=False: st.Page(_safe(fn, req, layers, auto), title=title, icon=icon,  # noqa: E731
                                                               url_path=path, default=default)
     page = lambda render: (lambda: render(svc(), req))  # noqa: E731
     return {

@@ -250,7 +250,7 @@ jobs:
           - **Mac Intel (macOS 12 Monterey o superior)**: `FGIsraelView-Build1-macOS-Intel.dmg` → arrastra a Aplicaciones; la primera vez Control + clic → Abrir
 
           **Novedades Build 1**
-          - 📊 La gráfica con la señal vuelve a ser la primera página al abrir la app (v4.0.1).
+          - 📊 La gráfica con la recomendación de operación (LONG/SHORT, entrada, SL, TPs) se muestra fija arriba en TODAS las páginas (v4.0.2).
           - 🎓/🕎 Interruptor **PRINCIPIANTE GOY / EXPERTO RABBI**: explicaciones paso a paso o todo el detalle técnico.
           - 🧭 Rediseño: menú lateral por secciones (Operar, Escanear, Riesgo y capital, Contexto, Herramientas).
           - ⏳ **Time Machine**: 100,000 simulaciones Monte Carlo (bootstrap por bloques de 15–30 min, 90 días de velas de 1 min, solo tramos con volatilidad ±20% de la actual) → P(TP1/TP2/TP3/SL/tiempo), expectativa y VaR 95% con veredicto. Núcleo C++.
