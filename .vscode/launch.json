@@ -1,0 +1,46 @@
+{
+  // Pestaña "Ejecutar y depurar" (Ctrl+Shift+D): elige una opción y pulsa F5
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "FG VIEW · App (Streamlit)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "streamlit",
+      "args": ["run", "app.py", "--server.port", "8501"],
+      "cwd": "${workspaceFolder}",
+      "justMyCode": true
+    },
+    {
+      "name": "FG VIEW · Lanzador de escritorio",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/launcher.py",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "FG VIEW · API (FastAPI)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": ["api:app", "--reload", "--port", "8000"],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "FG VIEW · Backtest (demo)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/tests/backtest_runner.py",
+      "args": ["--market", "demo"],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "FG VIEW · Pruebas (pytest)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": ["-q"],
+      "cwd": "${workspaceFolder}"
+    }
+  ]
+}

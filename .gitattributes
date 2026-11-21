@@ -1,0 +1,6 @@
+# Finales de línea correctos por plataforma
+* text=auto
+*.bat text eol=crlf
+*.sh text eol=lf
+*.png binary
+*.ico binary

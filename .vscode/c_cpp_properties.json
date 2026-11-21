@@ -1,0 +1,17 @@
+{
+  // IntelliSense de C++ para cpp/fgcore.cpp (encabezados de Python y pybind11 del .venv)
+  "configurations": [
+    {
+      "name": "FG VIEW",
+      "includePath": [
+        "${workspaceFolder}/cpp",
+        "${workspaceFolder}/.venv/Lib/site-packages/pybind11/include",
+        "${workspaceFolder}/.venv/lib/python3.11/site-packages/pybind11/include",
+        "${workspaceFolder}/.venv/include",
+        "${workspaceFolder}/.venv/Include"
+      ],
+      "cppStandard": "c++17"
+    }
+  ],
+  "version": 4
+}
