@@ -112,7 +112,9 @@ class PositionPlanner:
         return max(1, math.floor(1.0 / (self.cfg.liq_safety * sl_frac + MAINTENANCE_MARGIN)))
 
     # ------------------------------------------------------------------- plan
-    def plan(self, capital: float, symbol: str, direction: str, entry: float, atr5: float | None = None) -> Plan:
+    def plan(self, capital: float, symbol: str, direction: str, entry: float, atr5: float | None = None,
+             lev_cap: int | None = None) -> Plan:
+        """`lev_cap`: tope extra de apalancamiento (p. ej. por riesgo de squeeze)."""
         if capital <= 0 or entry <= 0 or direction not in ("LONG", "SHORT"):
             raise ValueError("Capital, entrada y dirección (LONG/SHORT) son obligatorios.")
         cfg = self.cfg
@@ -132,7 +134,10 @@ class PositionPlanner:
         notional = capital * risk_pct / 100.0 / sl_frac
         max_margin = capital * max_margin_pct / 100.0
         lev_safe = self.max_safe_leverage(sl_frac)
-        lev_hi = min(tier.lev_max, lev_safe)
+        lev_hi = min(tier.lev_max, lev_safe, lev_cap or tier.lev_max)
+        if lev_cap and lev_cap < min(tier.lev_max, lev_safe):
+            notes.append(f"Subidas/bajadas bruscas recientes: apalancamiento máximo {lev_cap}x para que la "
+                         "liquidación quede más lejos que el peor movimiento de 30 min de las últimas 24 h.")
         lev_lo = min(tier.lev_min, lev_hi)
         if lev_hi < tier.lev_min:
             notes.append(f"El SL es amplio: el apalancamiento baja a {lev_hi}x para que la liquidación quede "

@@ -14,6 +14,7 @@ from engine.fgview.filters import FilterReport, FilterSet
 from engine.fgview.journal import DailyGuard, TradeJournal
 from engine.fgview.plan import Plan, PositionPlanner
 from engine.fgview.snapshot import MarketSnapshot, SnapshotLoader
+from engine.fgview.squeeze import SqueezeGuard
 from engine.fgview.stats import OutcomeStats, SetupStatistics
 from engine.position_simulator import fmt_pct, fmt_px, fmt_usd
 
@@ -28,6 +29,7 @@ class Recommendation:
     report: FilterReport
     stats: OutcomeStats
     light: str  # verde = entrar · amarillo = esperar · rojo = no operar
+    squeeze: object | None = None  # SqueezeReport contra la dirección recomendada
 
     @property
     def coin(self) -> str:
@@ -48,6 +50,7 @@ class ScalpRecommender:
                  config: FGConfig = DEFAULT_CONFIG) -> None:
         self.loader, self.filters, self.planner, self.stats = loader, filters, planner, stats
         self.journal, self.guard, self.news, self.cfg = journal, guard, news, config
+        self.squeeze = SqueezeGuard()  # Protección contra squeezes (se puede sustituir en tests)
 
     # ----------------------------------------------------------------- núcleo
     def external_blocks(self, capital: float) -> list[str]:
@@ -75,9 +78,13 @@ class ScalpRecommender:
         symbol = snap.symbol
         report = (self.filters.best(snap, symbol, blocks) if direction == "Auto"
                   else self.filters.evaluate(snap, direction, symbol, blocks))
-        plan = self.planner.plan(capital, symbol, report.direction, snap.price, snap.atr5)
+        sq = self.squeeze.analyze(snap.df5, report.direction, snap.funding) if self.squeeze else None
+        if sq is not None and sq.risk == "alto":
+            report.blocks.append(sq.label + ": " + " · ".join(sq.reasons[:3]))
+        plan = self.planner.plan(capital, symbol, report.direction, snap.price, snap.atr5,
+                                 lev_cap=sq.lev_cap if sq is not None else None)
         stats = self.stats.evaluate(plan, snap.df5)
-        return Recommendation(symbol, snap, plan, report, stats, self.classify(report, plan, stats))
+        return Recommendation(symbol, snap, plan, report, stats, self.classify(report, plan, stats), sq)
 
     def recommend(self, symbol: str, market: str, capital: float, direction: str = "Auto", contract: str = "USDT-M",
                   exchange: str | None = None, force: bool = False) -> Recommendation:

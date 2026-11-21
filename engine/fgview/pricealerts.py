@@ -9,6 +9,7 @@ Tipos de alerta:
 * movimiento brusco: más de 2% en 5 minutos
 * liquidación cerca: precio a menos de 1.5× la distancia del SL de la liquidación
   (se vigila automáticamente en cada posición abierta)
+* squeeze: subida brusca contra tu SHORT (o caída contra tu LONG), automática
 
 Se envían por Telegram y/o webhook (sirve para notificaciones push con ntfy.sh,
 Discord, Pushover…). Configúralo en .env: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID,
@@ -27,6 +28,8 @@ from engine.alerts import AlertManager
 from engine.data_feeder import DataFeeder
 from engine.database import Database
 from engine.fgview.risk import PositionBook
+from engine.fgview.squeeze import SqueezeGuard
+from engine.indicators import compute_all
 from engine.position_simulator import fmt_px
 
 KINDS = {
@@ -54,6 +57,7 @@ class PriceAlerts:
         self.sender = sender or AlertManager()
         self.sharp_pct, self.liq_factor, self.cooldown = sharp_pct, liq_factor, timedelta(minutes=cooldown_min)
         self._mem: list[dict] = []
+        self.guard = SqueezeGuard()
 
     # ----------------------------------------------------------------- reglas
     def rules(self) -> list[dict]:
@@ -118,6 +122,14 @@ class PriceAlerts:
                                         f"⚠️ {pos['coin']} {pos['direction']}: el precio ${fmt_px(price)} está a "
                                         f"{liq_dist / sl_dist:.2f}× la distancia del SL de tu liquidación "
                                         f"(${fmt_px(pos['liquidation'])}). Revisa la posición YA."))
+            try:  # Squeeze contra la posición abierta
+                sq = self.guard.analyze(compute_all(bars(pos["coin"], pos.get("market", "crypto"), "5m")),
+                                        pos["direction"])
+            except Exception:  # noqa: BLE001
+                sq = None
+            if sq is not None and sq.risk == "alto" and not self._cooling(pos.get("sq_alert"), now):
+                self.book.update(pos["id"], sq_alert=now.isoformat())
+                fired.append(FiredAlert(pos["coin"], "squeeze", f"🚨 {pos['coin']} {pos['direction']}: {sq.text()}"))
         if send:
             for f in fired:
                 self.sender.send_text(f"🔔 FG ISRAEL VIEW · {f.message}")

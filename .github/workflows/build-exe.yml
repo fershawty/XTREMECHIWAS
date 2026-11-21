@@ -252,6 +252,8 @@ jobs:
           **Novedades Build 1**
           - 📊 La gráfica con la recomendación de operación (LONG/SHORT, entrada, SL, TPs) se muestra fija arriba en TODAS las páginas (v4.0.2).
           - ⚡ Time Machine mucho más rápido (v4.0.3): descarga del historial en paralelo, primer resultado inmediato con velas de 5 min, precarga automática en segundo plano y barra de progreso con tiempos.
+          - 🛡️ Anti-squeeze (v4.0.4): detecta subidas/caídas bruscas que liquidan, aviso fijo en la gráfica, bloqueo de SHORT/LONG en riesgo alto, apalancamiento limitado al peor movimiento de 30 min de las últimas 24 h y alerta automática para posiciones abiertas.
+          - 🔥 BURN OUT ya no bloquea (v4.0.4): siempre da la operación; si no es recomendable la marca ⚠️ con los motivos.
           - 🎓/🕎 Interruptor **PRINCIPIANTE GOY / EXPERTO RABBI**: explicaciones paso a paso o todo el detalle técnico.
           - 🧭 Rediseño: menú lateral por secciones (Operar, Escanear, Riesgo y capital, Contexto, Herramientas).
           - ⏳ **Time Machine**: 100,000 simulaciones Monte Carlo (bootstrap por bloques de 15–30 min, 90 días de velas de 1 min, solo tramos con volatilidad ±20% de la actual) → P(TP1/TP2/TP3/SL/tiempo), expectativa y VaR 95% con veredicto. Núcleo C++.

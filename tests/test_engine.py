@@ -547,13 +547,18 @@ def test_burnout_rules(fgdb):
     assert abs(p.entry - p.liquidation) >= 2 * abs(p.entry - p.stop_loss)  # SL antes de la liquidación
     b = fgdb.burnout.build_plan("SOL/USDT", "SHORT", 150, None, 20)
     assert 25 <= b.leverage <= 50
-    assert bo.gate(70, None)  # Señal < 80 y sin Time Machine -> no se activa
+    hard, warn = bo.gate(70, None)  # Señal < 80 y sin Time Machine -> NO bloquea, solo avisa
+    assert not hard and any("Puntuación" in w for w in warn)
     assert not bo.confirmed("confirmo ya") and bo.confirmed(" confirmo ")
     now = datetime.now(timezone.utc)
     bo.register_result(-5, "BTC", now)
     bo.register_result(-5, "BTC", now)
-    assert any("intentos" in r for r in bo.gate(90, None, now=now))
+    hard, warn = bo.gate(90, None, now=now)
+    assert not hard and any("intentos" in w for w in warn)  # Más de 2 intentos: aviso, no bloqueo
+    capped = bo.build_plan("BTC/USDT", "LONG", 100_000, 120, 20, lev_cap=20)
+    assert capped.leverage == 20  # Anti-squeeze baja el apalancamiento
     bo.register_result(-50, "BTC", now)  # La bolsa llega a $0 -> bloqueo 7 días
+    assert bo.gate(90, None, now=now)[0]
     assert bo.bag().balance == 0 and bo.locked(now) and not bo.locked(now + timedelta(days=8))
 
 
@@ -638,3 +643,33 @@ def test_price_alerts_sharp_move_and_liq(fgdb, monkeypatch):
     kinds = {f.kind for f in fgdb.alerts.check(send=False)}
     assert {"sharp_move", "liq_near"} <= kinds
     assert not fgdb.alerts.check(send=False)  # Enfriamiento: no repite enseguida
+
+
+def test_squeeze_guard_detects_short_squeeze(fg):
+    """Caso real: SOL cae a 64.83 y rebota a 68.49 en ~40 min (liquidó un SHORT 55x)."""
+    import pandas as pd
+
+    from engine.indicators import compute_all
+
+    base = [70 - 0.02 * i for i in range(250)]  # Tendencia bajista suave
+    dump = [65.8 - 0.1 * i for i in range(10)]  # Caída hasta ~64.9
+    pump = [64.83 + 0.45 * i for i in range(1, 9)]  # Rebote violento hasta ~68.4
+    closes = base + dump + pump
+    idx = pd.date_range("2026-11-20", periods=len(closes), freq="5min", tz="UTC")
+    c = pd.Series(closes, index=idx)
+    vol = [100.0] * (len(closes) - 8) + [400.0] * 8
+    df = pd.DataFrame({"open": c.shift(1).fillna(c.iloc[0]), "high": c * 1.002, "low": c * 0.998, "close": c,
+                       "volume": vol}, index=idx)
+    rep = fg.recommender.squeeze.analyze(compute_all(df), "SHORT", funding=-0.0002)
+    assert rep.risk == "alto" and rep.direction == "SHORT"
+    assert rep.lev_cap < 55  # A 55x la liquidación (~1.3%) estaba más cerca que el squeeze
+    assert fg.recommender.squeeze.analyze(compute_all(df), "LONG").risk == "bajo"
+    assert fg.recommender.squeeze.lev_cap_for(5.6) <= 14
+
+
+def test_burnout_decide_gives_trade_even_if_not_recommended(fgdb):
+    bo = fgdb.burnout
+    bo.fund(20, 1000)
+    plan = bo.build_plan("BTC/USDT", "SHORT", 100_000, None, 20)
+    dec = bo.decide(plan, 40, None, ["Noticia de alto impacto"], squeeze_text="Riesgo ALTO de SHORT SQUEEZE")
+    assert dec.active and not dec.recommended and len(dec.warnings) >= 3 and "BURN OUT" in dec.warning

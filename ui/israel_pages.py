@@ -510,11 +510,11 @@ def render_burnout(svc, req) -> None:
                 '🔥 BURN OUT 🔥</div><div style="color:#ffd0d0;font-weight:700">⛔ PELIGRO EXTREMO · presupuesto bajo + '
                 'apalancamiento alto · puedes perder el 100% del monto</div></div>', unsafe_allow_html=True)
     guide("Usas una «bolsa de quema» pequeña y separada (máx. 5% de tu capital) con apalancamiento de 50x a 100x para "
-          "intentar multiplicarla rápido. Solo se activa cuando el Time Machine y la señal son muy buenos, máximo 2 "
-          "intentos al día, y si la bolsa llega a $0 se bloquea 7 días.",
+          "intentar multiplicarla rápido. Es RECOMENDADO cuando el Time Machine y la señal son muy buenos; si no, te da la "
+          "operación igual con un aviso. Si la bolsa llega a $0 se bloquea 7 días.",
           ["Carga la bolsa de quema (dinero que aceptas perder).", "Elige BTC o ETH (o una de nivel B).",
            "Pulsa «Analizar BURN OUT»: si todo da verde, lee la advertencia y escribe CONFIRMO."],
-          "Si una sola regla no se cumple, el botón no se activa. Eso te protege.")
+          "Si algo no se cumple te lo marca ⚠️ NO RECOMENDADO, pero la operación se muestra igual: tú decides.")
     bo, capital = svc.burnout, _capital()
     bag = bo.bag()
     today = datetime.now(timezone.utc).date().isoformat()
@@ -540,38 +540,55 @@ def render_burnout(svc, req) -> None:
         st.info("Carga primero la bolsa de quema para analizar un BURN OUT.")
     if st.button("🔥 Analizar BURN OUT", type="primary", key="bo_go", disabled=bo.bag().balance < bo.EMPTY):
         try:
-            with st.spinner("Señal + Time Machine (100,000 simulaciones)…"):
+            with st.spinner("Señal + anti-squeeze + Time Machine (100,000 simulaciones)…"):
                 snap = svc.loader.load(symbol, market, exchange=req.exchange)
                 ext = svc.recommender.external_blocks(capital)
                 rep = svc.filters.best(snap, symbol, ext)
-                plan = bo.build_plan(symbol, rep.direction, snap.price, snap.atr5, bo.bag().balance * stake_pct / 100)
+                sq = svc.recommender.squeeze.analyze(snap.df5, rep.direction, snap.funding)
+                plan = bo.build_plan(symbol, rep.direction, snap.price, snap.atr5,
+                                     bo.bag().balance * stake_pct / 100, lev_cap=sq.lev_cap)
                 tm = run_time_machine(svc, plan, symbol, market, req.exchange)
-                dec = bo.decide(plan, rep.score, tm, rep.blocks)
+                dec = bo.decide(plan, rep.score, tm, rep.blocks, squeeze_text=sq.text() if sq.danger else None)
             st.session_state["bo_last"] = (plan, rep, tm, dec, symbol, market)
         except Exception as exc:  # noqa: BLE001
             st.error(str(exc))
     if "bo_last" not in st.session_state:
         return
     plan, rep, tm, dec, symbol, market = st.session_state["bo_last"]
-    st.markdown(f"**{plan.coin} {plan.direction}** · {plan.leverage}x AISLADO · margen {fmt_usd(plan.margin)} → posición "
-                f"{fmt_usd(plan.notional)} · entrada ${fmt_px(plan.entry)} · SL ${fmt_px(plan.stop_loss)} "
-                f"(−{plan.sl_pct:.2f}%) · liquidación ${fmt_px(plan.liquidation)}")
+    if dec.recommended:
+        _banner("✅ BURN OUT RECOMENDADO: la señal y el Time Machine cumplen las condiciones.", "#3FB950",
+                "rgba(63,185,80,.12)")
+    elif dec.active:
+        _banner("⚠️ BURN OUT NO RECOMENDADO · la operación se muestra igual porque así lo elegiste. Lee los motivos.",
+                "#F2D27A", "rgba(242,210,122,.10)")
+        for w in dec.warnings:
+            st.markdown(f"- ⚠️ {w}")
+    arrow = "🟢 LONG" if plan.direction == "LONG" else "🔴 SHORT"
+    st.markdown(f"### {arrow} {plan.coin} · {plan.leverage}x AISLADO")
+    st.markdown(f"Margen {fmt_usd(plan.margin)} → posición {fmt_usd(plan.notional)} · entrada **${fmt_px(plan.entry)}** · "
+                f"SL **${fmt_px(plan.stop_loss)}** (−{plan.sl_pct:.2f}%) · liquidación ${fmt_px(plan.liquidation)}  \n"
+                f"TP1 **${fmt_px(plan.tps[0][0])}** (50%) · TP2 **${fmt_px(plan.tps[1][0])}** (30%) · "
+                f"TP3 **${fmt_px(plan.tps[2][0])}** (20%)")
     st.markdown(f"Si sale bien (TP1+TP2+TP3): **×{bo.multiplier(plan):.2f}** la bolsa ({fmt_usd(sum(plan.tp_pnl), True)}) · "
                 f"si salta el SL: **{fmt_usd(plan.sl_pnl, True)}** ({plan.sl_pnl / plan.margin * 100:.0f}% del monto)")
+    for n in plan.notes[1:]:
+        st.caption(n)
     _tm_block(tm)
     _banner(dec.warning)
+    _banner("🛡️ Pon SIEMPRE el SL en el exchange al entrar. Con apalancamiento alto, sin SL un squeeze te liquida en "
+            "minutos.", "#F2D27A", "rgba(242,210,122,.06)")
     if not dec.active:
-        st.markdown("**Hoy NO se activa BURN OUT:**")
+        st.markdown("**No se puede operar ahora:**")
         for r in dec.reasons:
             st.markdown(f"- ⛔ {r}")
         return
     rc = svc.risk.check(plan.coin, plan.direction, plan.entry, plan.stop_loss, plan.liquidation, capital,
                         svc.journal.today() if svc.journal else [], liq_safety=bo.LIQ_SAFETY)
-    for b in rc.blocks:
-        _banner(f"⛔ {b}")
+    for b in rc.blocks:  # En BURN OUT el Risk Manager avisa pero no bloquea
+        st.markdown(f"- ⚠️ {b}")
     typed = st.text_input(f'Escribe "{CONFIRM_WORD}" para continuar', key="bo_confirm")
     mode = "live" if live_enabled() and st.toggle("💵 Enviar en REAL (si no, papel)", key="bo_live") else "paper"
-    if st.button("🔥 EJECUTAR BURN OUT", disabled=not (bo.confirmed(typed) and rc.allowed), key="bo_exec"):
+    if st.button("🔥 EJECUTAR BURN OUT", disabled=not bo.confirmed(typed), key="bo_exec"):
         ticket = svc.executor.build_ticket(plan, symbol, market, "binance", "BURN OUT", rep.score)
         res = svc.executor.submit(ticket, confirmed=bo.confirmed(typed), mode=mode)
         if res.get("status") == "filled":

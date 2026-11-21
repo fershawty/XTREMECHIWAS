@@ -61,12 +61,17 @@ class BurnBag:
 
 @dataclass
 class BurnDecision:
-    active: bool
+    active: bool  # Se puede ejecutar (solo lo impiden la bolsa vacía o bloqueada)
     plan: Plan | None
-    reasons: list[str]  # Por qué NO se activa (vacío = activa)
+    reasons: list[str]  # Bloqueos duros (bolsa vacía / bloqueada)
+    warnings: list[str] = field(default_factory=list)  # Por qué NO es recomendable (no bloquea)
     warning: str = ""
     liq_move_pct: float = 0.0
     p_lose_all: float = 0.0
+
+    @property
+    def recommended(self) -> bool:
+        return self.active and not self.warnings
 
 
 class BurnOutStrategy:
@@ -140,7 +145,8 @@ class BurnOutStrategy:
         return b
 
     # ------------------------------------------------------------------ plan
-    def build_plan(self, symbol: str, direction: str, entry: float, atr5: float | None, stake: float) -> Plan:
+    def build_plan(self, symbol: str, direction: str, entry: float, atr5: float | None, stake: float,
+                   lev_cap: int | None = None) -> Plan:
         tier, listed = self.planner.tiers.for_coin(symbol)
         rule = BURN_RULES.get(tier.key)
         if rule is None or not listed:
@@ -156,6 +162,9 @@ class BurnOutStrategy:
             lev -= 1
         if (1 / lev - MAINTENANCE_MARGIN) < self.LIQ_SAFETY * sl:
             raise ValueError("El SL necesario no cabe antes de la liquidación ni con el apalancamiento mínimo.")
+        squeezed = bool(lev_cap and lev_cap < lev)
+        if squeezed:  # Anti-squeeze: la liquidación debe quedar más lejos que el peor movimiento reciente
+            lev = max(1, int(lev_cap))
         d = 1 if direction == "LONG" else -1
         notional = stake * lev
         fees = notional * self.cfg.fee * 2
@@ -166,6 +175,9 @@ class BurnOutStrategy:
         rr_w = sum(pct * close / 100 for _, pct, close in tps) / sl_pct
         rr_net = sum(tp_pnl) / abs(sl_pnl)
         notes = [f"⛔ BURN OUT: margen AISLADO {fmt_usd(stake)} × {lev}x = posición {fmt_usd(notional)}."]
+        if squeezed:
+            notes.append(f"🛡️ Anti-squeeze: apalancamiento reducido a {lev}x porque hubo movimientos bruscos en las "
+                         "últimas 24 h que habrían alcanzado la liquidación con más apalancamiento.")
         if atr_pct > rule.sl_max:
             notes.append(f"La volatilidad (ATR {atr_pct:.2f}%) supera el SL máximo ({rule.sl_max}%): el ruido normal "
                          "puede sacarte. El Time Machine ya lo tiene en cuenta.")
@@ -180,23 +192,30 @@ class BurnOutStrategy:
 
     # -------------------------------------------------------------- decisión
     def gate(self, signal_score: int, tm: TimeMachineResult | None, external_blocks: list[str] | None = None,
-             now: datetime | None = None) -> list[str]:
-        """Motivos por los que hoy NO se puede hacer BURN OUT (vacío = permitido)."""
-        reasons = list(external_blocks or [])
+             now: datetime | None = None, squeeze_text: str | None = None) -> tuple[list[str], list[str]]:
+        """
+        (bloqueos, avisos). Solo bloquea lo que hace imposible operar (bolsa vacía o bloqueada).
+        Todo lo demás son avisos: la operación se da igual, marcada como NO RECOMENDADA.
+        """
+        hard: list[str] = []
+        warn = list(external_blocks or [])
         b = self.bag()
         if (lock := self.locked(now)):
-            reasons.append(lock)
+            hard.append(lock)
         if b.balance < self.EMPTY:
-            reasons.append("La bolsa de quema está vacía: recárgala (máximo 5% de tu capital).")
+            hard.append("La bolsa de quema está vacía: recárgala (máximo 5% de tu capital).")
         if b.attempts_today(self._today(now)) >= self.MAX_ATTEMPTS:
-            reasons.append(f"Ya hiciste {self.MAX_ATTEMPTS} intentos hoy (máximo). Vuelve mañana.")
+            warn.append(f"Ya hiciste {b.attempts_today(self._today(now))} intentos hoy (lo recomendado es máximo "
+                        f"{self.MAX_ATTEMPTS}).")
         if signal_score < self.MIN_SCORE:
-            reasons.append(f"Puntuación de la señal {signal_score}/100 (mínimo {self.MIN_SCORE}).")
+            warn.append(f"Puntuación de la señal {signal_score}/100 (recomendado ≥ {self.MIN_SCORE}).")
         if tm is None:
-            reasons.append("Falta el Time Machine.")
+            warn.append("Sin Time Machine.")
         elif tm.p_tp1 < self.MIN_P_TP1:
-            reasons.append(f"Time Machine: P(TP1) {tm.p_tp1:.1f}% (mínimo {self.MIN_P_TP1:.0f}%).")
-        return reasons
+            warn.append(f"Time Machine: P(TP1) {tm.p_tp1:.1f}% (recomendado ≥ {self.MIN_P_TP1:.0f}%).")
+        if squeeze_text:
+            warn.append(squeeze_text)
+        return hard, warn
 
     @staticmethod
     def warning(plan: Plan, tm: TimeMachineResult | None) -> tuple[str, float, float]:
@@ -208,10 +227,11 @@ class BurnOutStrategy:
         return text, liq_move, p_all
 
     def decide(self, plan: Plan, signal_score: int, tm: TimeMachineResult | None,
-               external_blocks: list[str] | None = None, now: datetime | None = None) -> BurnDecision:
-        reasons = self.gate(signal_score, tm, external_blocks, now)
+               external_blocks: list[str] | None = None, now: datetime | None = None,
+               squeeze_text: str | None = None) -> BurnDecision:
+        hard, warn = self.gate(signal_score, tm, external_blocks, now, squeeze_text)
         text, liq_move, p_all = self.warning(plan, tm)
-        return BurnDecision(not reasons, plan, reasons, text, liq_move, p_all)
+        return BurnDecision(not hard, plan, hard, warn, text, liq_move, p_all)
 
     @staticmethod
     def confirmed(typed: str) -> bool:

@@ -246,6 +246,7 @@ def main_panel(req: AnalysisRequest, layers: dict) -> None:
         return
 
     ui.render_banners(result.warnings)
+    squeeze_banner(req)
     if result.is_new_alert:
         st.toast(f"🚨 {result.signal.direction} {req.symbol} · score {result.signal.score:.0f}/100", icon="🚨")
 
@@ -282,6 +283,25 @@ def main_panel(req: AnalysisRequest, layers: dict) -> None:
     ui.render_footer()
 
 
+def squeeze_banner(req: AnalysisRequest) -> None:
+    """Aviso permanente de SHORT/LONG SQUEEZE (subidas o caídas bruscas que liquidan)."""
+    if req.market not in ("crypto", "demo"):
+        return
+    try:
+        svc = get_services()
+        snap = svc.loader.load(req.symbol if req.market == "crypto" else "DEMO/USDT", req.market,
+                               exchange=req.exchange)
+        for side in ("SHORT", "LONG"):
+            rep = svc.recommender.squeeze.analyze(snap.df5, side, snap.funding)
+            if rep.danger:
+                color = "#F85149" if rep.risk == "alto" else "#F2D27A"
+                st.markdown(f'<div style="border:2px solid {color};background:rgba(248,81,73,.08);border-radius:10px;'
+                            f'padding:.55rem .9rem;margin:.3rem 0;font-weight:600">{ui.esc(rep.text())}</div>',
+                            unsafe_allow_html=True)
+    except Exception:  # noqa: BLE001 - el aviso es un extra: nunca rompe la gráfica
+        pass
+
+
 def chart_strip(req: AnalysisRequest, layers: dict) -> None:
     """
     Gráfica + recomendación de operación fija arriba de TODAS las páginas.
@@ -298,6 +318,7 @@ def chart_strip(req: AnalysisRequest, layers: dict) -> None:
     ui.render_banners(result.warnings[:1])
     if req.market == "crypto":  # Precarga el historial del Time Machine en segundo plano
         get_services().history.prefetch(req.symbol, "crypto", ("5m", "1m"), 90, req.exchange)
+    squeeze_banner(req)
     if result.is_new_alert:
         st.toast(f"🚨 {result.signal.direction} {req.symbol} · score {result.signal.score:.0f}/100", icon="🚨")
     col_chart, col_card = st.columns([3.1, 1.15], gap="medium")
