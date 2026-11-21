@@ -213,7 +213,21 @@ class LiveBroker:
                                               float(ex.price_to_precision(t.symbol, price)), {"reduceOnly": True}))
             except Exception as exc:  # noqa: BLE001 - el SL ya protege la posición
                 log.warning("TP%d no colocado: %s", i + 1, exc)
-        return {"status": "filled", "entry": entry, "stop_loss": sl, "take_profits": orders, "qty": qty}
+        return {"status": "filled", "entry": entry, "stop_loss": sl, "take_profits": orders, "qty": qty,
+                "sl_order_id": (sl or {}).get("id")}
+
+    def move_stop(self, pos: dict, new_stop: float) -> dict:
+        """Mueve el SL en el exchange: crea el nuevo y luego cancela el viejo (nunca queda sin SL)."""
+        ex = self.exchange()
+        close_side = "sell" if pos["direction"] == "LONG" else "buy"
+        new = ex.create_order(pos["symbol"], "market", close_side, pos["qty"], None,
+                              {"stopLossPrice": float(ex.price_to_precision(pos["symbol"], new_stop)), "reduceOnly": True})
+        if pos.get("sl_order_id"):
+            try:
+                ex.cancel_order(pos["sl_order_id"], pos["symbol"])
+            except Exception as exc:  # noqa: BLE001 - el viejo quizá ya no existe; el nuevo protege
+                log.warning("No se pudo cancelar el SL anterior: %s", exc)
+        return {"sl_order_id": new.get("id")}
 
 
 class OrderExecutor:
@@ -243,10 +257,52 @@ class OrderExecutor:
                 return {"status": "rejected", "problems": ["Solo se puede operar en real con cripto."]}
             res = LiveBroker(ticket.exchange, testnet).open(ticket)
             if res.get("status") == "filled":
-                self.book.add({**asdict(ticket), "mode": "real", "qty": res["qty"]})
+                self.book.add({**asdict(ticket), "mode": "real", "qty": res["qty"],
+                               "sl_order_id": res.get("sl_order_id"), "testnet": testnet})
             return res
         pos = self.book.add({**asdict(ticket), "mode": "papel"})
         return {"status": "filled", "mode": "papel", "position": pos}
+
+    # ------------------------------------------------------- escudo anti-squeeze
+    SHIELD_KEY = "squeeze_shield"
+
+    def shield_enabled(self) -> bool:
+        db = getattr(self.book, "db", None)
+        return bool(db.get_state(self.SHIELD_KEY, True)) if db is not None else True
+
+    def set_shield(self, on: bool) -> None:
+        db = getattr(self.book, "db", None)
+        if db is not None:
+            db.set_state(self.SHIELD_KEY, bool(on))
+
+    def shield(self, pos: dict, price: float, atr: float | None) -> str | None:
+        """
+        Squeeze contra la posición: si va ganando, SL a break-even; si va perdiendo, SL a
+        precio ± 0.5 × ATR para perder menos. NUNCA aleja el SL. Devuelve qué hizo.
+        """
+        if not self.shield_enabled():
+            return None
+        s = 1 if pos["direction"] == "LONG" else -1
+        profit = s * (price - pos["entry"])
+        if profit > 0:
+            target, why = pos["break_even"], "SL a break-even (ya no puedes perder)"
+        elif atr and atr > 0:
+            target, why = price - s * 0.5 * atr, "SL ajustado a 0.5 × ATR del precio (pierdes menos)"
+        else:
+            return None
+        tighter = (target > pos["stop_loss"]) if s == 1 else (target < pos["stop_loss"])
+        valid_side = (target < price) if s == 1 else (target > price)
+        if not (tighter and valid_side):
+            return None
+        # El PnL si salta el SL cambia con el nuevo nivel (lo usa la simulación de papel)
+        changes = {"stop_loss": target, "sl_pnl": pos["notional"] * s * (target - pos["entry"]) / pos["entry"] - pos["fees"]}
+        if pos.get("mode") == "real":
+            try:
+                changes.update(LiveBroker(pos["exchange"], bool(pos.get("testnet"))).move_stop(pos, target))
+            except Exception as exc:  # noqa: BLE001
+                return f"🛡️ No se pudo mover el SL en el exchange ({str(exc)[:80]}): MUÉVELO A MANO a ${fmt_px(target)}"
+        self.book.update(pos["id"], **changes)
+        return f"🛡️ Escudo anti-squeeze {pos['coin']} {pos['direction']}: {why} → ${fmt_px(target)}"
 
     def refresh_paper(self) -> list[dict]:
         """Cierra las posiciones de papel que ya tocaron SL/TP3 o pasaron 30 min."""

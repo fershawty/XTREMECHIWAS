@@ -663,7 +663,8 @@ def test_squeeze_guard_detects_short_squeeze(fg):
     rep = fg.recommender.squeeze.analyze(compute_all(df), "SHORT", funding=-0.0002)
     assert rep.risk == "alto" and rep.direction == "SHORT"
     assert rep.lev_cap < 55  # A 55x la liquidación (~1.3%) estaba más cerca que el squeeze
-    assert fg.recommender.squeeze.analyze(compute_all(df), "LONG").risk == "bajo"
+    late_long = fg.recommender.squeeze.analyze(compute_all(df), "LONG")  # Tras +5.5%: comprar es perseguir
+    assert any("llegar tarde" in r for r in late_long.reasons)
     assert fg.recommender.squeeze.lev_cap_for(5.6) <= 14
 
 
@@ -673,3 +674,30 @@ def test_burnout_decide_gives_trade_even_if_not_recommended(fgdb):
     plan = bo.build_plan("BTC/USDT", "SHORT", 100_000, None, 20)
     dec = bo.decide(plan, 40, None, ["Noticia de alto impacto"], squeeze_text="Riesgo ALTO de SHORT SQUEEZE")
     assert dec.active and not dec.recommended and len(dec.warnings) >= 3 and "BURN OUT" in dec.warning
+
+
+def test_squeeze_exhaustion_blocks_late_short_and_shield(fgdb):
+    """Después de una caída fuerte (antes del rebote) no se recomienda SHORT; el escudo aprieta el SL."""
+    import pandas as pd
+
+    from engine.fgview.squeeze import liquidation_zones
+    from engine.indicators import compute_all
+
+    closes = [72 - 0.005 * i for i in range(240)] + [70.8 - 0.25 * i for i in range(1, 25)]  # Caída de ~8%
+    idx = pd.date_range("2026-11-20", periods=len(closes), freq="5min", tz="UTC")
+    c = pd.Series(closes, index=idx)
+    df = pd.DataFrame({"open": c.shift(1).fillna(c.iloc[0]), "high": c * 1.001, "low": c * 0.999, "close": c,
+                       "volume": 100.0}, index=idx)
+    rep = fgdb.recommender.squeeze.analyze(compute_all(df), "SHORT", funding=-0.0001)
+    assert rep.risk == "alto" and any("llegar tarde" in r for r in rep.reasons)
+    zones = liquidation_zones(df)
+    assert all(lev in (100, 50, 25) for _, lev, _ in zones)
+    # Escudo: SHORT con ganancia -> SL a break-even; nunca se aleja
+    pos = fgdb.positions.add({"coin": "SOL", "direction": "SHORT", "entry": 67.49, "stop_loss": 67.90,
+                              "break_even": 67.42, "notional": 800, "fees": 0.8, "mode": "papel", "exchange": "binance"})
+    msg = fgdb.executor.shield(pos, 67.0, 0.2)
+    assert msg and fgdb.positions.all()[0]["stop_loss"] == pytest.approx(67.42)
+    assert fgdb.positions.all()[0]["sl_pnl"] == pytest.approx(800 * (67.49 - 67.42) / 67.49 - 0.8)
+    assert fgdb.executor.shield(fgdb.positions.all()[0], 67.3, 0.2) is None  # No afloja el SL
+    fgdb.executor.set_shield(False)
+    assert fgdb.executor.shield(fgdb.positions.all()[0], 66.0, 0.2) is None

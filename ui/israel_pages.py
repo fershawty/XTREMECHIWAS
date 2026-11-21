@@ -390,6 +390,12 @@ def render_executor(svc, req) -> None:
                 for p in res.get("problems", [res.get("message", "Error")]):
                     _banner(f"⛔ {p}")
     st.markdown("#### Posiciones abiertas")
+    on = st.toggle("🛡️ Escudo anti-squeeze automático", value=svc.executor.shield_enabled(), key="ex_shield",
+                   help="Si detecta una subida/caída brusca contra tu posición: con ganancia mueve el SL a break-even; "
+                        "con pérdida lo acerca a 0.5 × ATR del precio. Nunca aleja el SL. En real mueve la orden en el "
+                        "exchange. Funciona mientras la app está abierta (o con python -m engine.fgview.pricealerts).")
+    if on != svc.executor.shield_enabled():
+        svc.executor.set_shield(on)
     if st.button("🔄 Actualizar posiciones de papel", key="ex_ref"):
         for c in svc.executor.refresh_paper():
             st.toast(f"{c['coin']} cerrada ({c['reason']}): {fmt_usd(c['pnl'], True)}")

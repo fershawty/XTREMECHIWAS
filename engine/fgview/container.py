@@ -91,6 +91,8 @@ class FGServices:
                 burnout.register_result(result["pnl"], pos["coin"])
 
         executor.on_close.append(_burn_hook)
+        alerts = PriceAlerts(feeder, positions, db)
+        alerts.on_squeeze = executor.shield  # Escudo anti-squeeze automático
         return cls(config, tiers, loader, filters, planner, manager, stats, journal, recommender,
                    EasyModeAdvisor(recommender, manager, config), RecommenderBacktester(filters, planner, manager, config),
                    LadderPlanner(planner, config),
@@ -98,5 +100,5 @@ class FGServices:
                    scanner=ChartScanner(feeder, loader, filters, tiers), news_monitor=NewsMonitor(news),
                    timer=EntryTimer(config.bar_minutes), positions=positions,
                    risk=RiskManager(positions, guard, config), budget=BudgetManager(db, journal),
-                   executor=executor, alerts=PriceAlerts(feeder, positions, db), fundamentals=CryptoFundamentals(),
+                   executor=executor, alerts=alerts, fundamentals=CryptoFundamentals(),
                    smart_money=SmartMoneyTracker(), burnout=burnout)

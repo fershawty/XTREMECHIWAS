@@ -254,6 +254,7 @@ def main_panel(req: AnalysisRequest, layers: dict) -> None:
     with col_chart:
         try:
             fig = ui.build_price_chart(result, layers)
+            add_liquidation_zones(fig, req, result.market_data.last_price)
             st.plotly_chart(fig, width="stretch", key="main_chart",
                             config={"displayModeBar": False, "scrollZoom": True})
         except Exception as exc:  # noqa: BLE001 - el gráfico nunca debe tumbar la UI
@@ -302,6 +303,35 @@ def squeeze_banner(req: AnalysisRequest) -> None:
         pass
 
 
+def add_liquidation_zones(fig, req: AnalysisRequest, ref_price: float | None = None) -> None:
+    """Dibuja en la gráfica las zonas ESTIMADAS de liquidación de cortos (naranja) y largos (azul)."""
+    if req.market not in ("crypto", "demo") or not ref_price:
+        return
+    try:
+        from engine.fgview.squeeze import liquidation_zones
+
+        snap = get_services().loader.load(req.symbol if req.market == "crypto" else "DEMO/USDT", req.market,
+                                          exchange=req.exchange)
+        for side, lev, px in liquidation_zones(snap.df5):
+            if abs(px / ref_price - 1) > 0.08:  # Solo las cercanas al precio de la gráfica
+                continue
+            color = "#FF9F1C" if side == "cortos" else "#4EA8DE"
+            fig.add_hline(y=px, row=1, col=1, line=dict(color=color, width=1, dash="dot"), opacity=0.8,
+                          annotation_text=f"liq. {side} {lev}x (est.)", annotation_position="top left",
+                          annotation_font=dict(size=9, color=color))
+    except Exception:  # noqa: BLE001 - es un extra visual
+        pass
+
+
+def guard_positions() -> None:
+    """Revisa alertas y el escudo anti-squeeze de tus posiciones (como mucho una vez por minuto)."""
+    try:
+        for f in get_services().alerts.maybe_check():
+            st.toast(f.message, icon="🛡️" if f.kind == "shield" else "🔔")
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def chart_strip(req: AnalysisRequest, layers: dict) -> None:
     """
     Gráfica + recomendación de operación fija arriba de TODAS las páginas.
@@ -319,12 +349,14 @@ def chart_strip(req: AnalysisRequest, layers: dict) -> None:
     if req.market == "crypto":  # Precarga el historial del Time Machine en segundo plano
         get_services().history.prefetch(req.symbol, "crypto", ("5m", "1m"), 90, req.exchange)
     squeeze_banner(req)
+    guard_positions()
     if result.is_new_alert:
         st.toast(f"🚨 {result.signal.direction} {req.symbol} · score {result.signal.score:.0f}/100", icon="🚨")
     col_chart, col_card = st.columns([3.1, 1.15], gap="medium")
     with col_chart:
         try:
             fig = ui.build_price_chart(result, layers, height=500)
+            add_liquidation_zones(fig, req, result.market_data.last_price)
             st.plotly_chart(fig, width="stretch", key="top_chart",
                             config={"displayModeBar": False, "scrollZoom": True})
         except Exception as exc:  # noqa: BLE001 - el gráfico nunca debe tumbar la UI

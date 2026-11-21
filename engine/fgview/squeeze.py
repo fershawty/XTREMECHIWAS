@@ -13,6 +13,8 @@ Qué mide (velas de 5 min):
 * RSI saliendo de sobreventa (<30) o sobrecompra (>70) en la última hora (giro en V).
 * Precio recuperando (o perdiendo) la EMA 9 y el VWAP.
 * Funding negativo (muchos cortos pagando) o muy positivo (muchos largos).
+* AGOTAMIENTO (antes del rebote): ya cayó ≥ 4% (o ≥ 8 ATR) en 4 h, RSI en sobreventa o
+  precio fuera de la banda de Bollinger -> vender en corto AHÍ es llegar tarde.
 * Movimiento máximo en 30 min de las últimas 24 h -> tope de apalancamiento para que la
   liquidación quede MÁS LEJOS que ese movimiento (× 1.2).
 """
@@ -125,6 +127,50 @@ class SqueezeGuard:
             elif not up and funding > 0.0005:
                 pts += 1
                 reasons.append(f"funding alto ({funding * 100:.3f}%): muchos largos apalancados")
+        # --- Agotamiento: el squeeze aún no empezó, pero el terreno está listo ---
+        d4 = df5.iloc[-48:]
+        if up:
+            drop = (float(d4["high"].max()) / price - 1) * 100
+            drop_atr = (float(d4["high"].max()) - price) / atr if atr > 0 else 0
+        else:
+            drop = (price / float(d4["low"].min()) - 1) * 100
+            drop_atr = (price - float(d4["low"].min())) / atr if atr > 0 else 0
+        if drop >= 4 or drop_atr >= 8:
+            pts += 1
+            reasons.append(f"ya {'cayó' if up else 'subió'} {drop:.1f}% en 4 h: {'vender en corto' if up else 'comprar'} "
+                           "ahí es llegar tarde")
+        rsi_now = last.get("rsi") if "rsi" in df5 else None
+        if rsi_now is not None and pd.notna(rsi_now) and ((up and rsi_now < 30) or (not up and rsi_now > 70)):
+            pts += 1
+            reasons.append(f"RSI {rsi_now:.0f} ({'sobreventa' if up else 'sobrecompra'}): rebote probable")
+        pctb = last.get("bb_pctb") if "bb_pctb" in df5 else None
+        if pctb is not None and pd.notna(pctb) and ((up and pctb < 0) or (not up and pctb > 1)):
+            pts += 1
+            reasons.append(f"precio fuera de la banda {'inferior' if up else 'superior'} de Bollinger")
         move = self.max_adverse_move(df5, direction)
         risk = "alto" if pts >= 3 else ("medio" if pts == 2 else "bajo")
         return SqueezeReport(direction, risk, pts, reasons, move, self.lev_cap_for(move))
+
+
+def liquidation_zones(df5: pd.DataFrame, levs: tuple[int, ...] = (100, 50, 25), bars: int = 288,
+                      max_dist_pct: float = 8.0) -> list[tuple[str, int, float]]:
+    """
+    Zonas ESTIMADAS donde se liquidarían los cortos y los largos abiertos en las últimas 24 h.
+    Entrada media de cortos = precio medio ponderado por volumen de las velas rojas; de
+    largos = de las velas verdes. Liquidación = entrada × (1 ± 1/apalancamiento ∓ 0.5%).
+    Devuelve [(lado, apalancamiento, precio)] a menos de `max_dist_pct` del precio actual.
+    """
+    d = df5.iloc[-bars:]
+    price = float(d["close"].iloc[-1])
+    tp = (d["high"] + d["low"] + d["close"]) / 3
+    out: list[tuple[str, int, float]] = []
+    for side, mask in (("cortos", d["close"] < d["open"]), ("largos", d["close"] > d["open"])):
+        vol = d["volume"][mask]
+        if vol.sum() <= 0:
+            continue
+        entry = float((tp[mask] * vol).sum() / vol.sum())
+        for lev in levs:
+            liq = entry * (1 + 1 / lev - MAINTENANCE_MARGIN) if side == "cortos" else entry * (1 - 1 / lev + MAINTENANCE_MARGIN)
+            if abs(liq / price - 1) * 100 <= max_dist_pct:
+                out.append((side, lev, liq))
+    return out

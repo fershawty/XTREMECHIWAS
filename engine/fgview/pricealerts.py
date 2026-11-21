@@ -58,6 +58,8 @@ class PriceAlerts:
         self.sharp_pct, self.liq_factor, self.cooldown = sharp_pct, liq_factor, timedelta(minutes=cooldown_min)
         self._mem: list[dict] = []
         self.guard = SqueezeGuard()
+        self.on_squeeze = None  # Callback (pos, precio, atr) -> texto: escudo del Order Executor
+        self._last_check = 0.0
 
     # ----------------------------------------------------------------- reglas
     def rules(self) -> list[dict]:
@@ -127,13 +129,30 @@ class PriceAlerts:
                                         pos["direction"])
             except Exception:  # noqa: BLE001
                 sq = None
-            if sq is not None and sq.risk == "alto" and not self._cooling(pos.get("sq_alert"), now):
-                self.book.update(pos["id"], sq_alert=now.isoformat())
-                fired.append(FiredAlert(pos["coin"], "squeeze", f"🚨 {pos['coin']} {pos['direction']}: {sq.text()}"))
+            if sq is not None and sq.risk == "alto":
+                if self.on_squeeze is not None:  # El escudo actúa en cada revisión (solo aprieta el SL)
+                    try:
+                        df5 = bars(pos["coin"], pos.get("market", "crypto"), "5m")
+                        atr = float((df5["high"] - df5["low"]).iloc[-14:].mean())
+                        act = self.on_squeeze(pos, price, atr)
+                        if act:
+                            fired.append(FiredAlert(pos["coin"], "shield", act))
+                    except Exception:  # noqa: BLE001
+                        pass
+                if not self._cooling(pos.get("sq_alert"), now):
+                    self.book.update(pos["id"], sq_alert=now.isoformat())
+                    fired.append(FiredAlert(pos["coin"], "squeeze", f"🚨 {pos['coin']} {pos['direction']}: {sq.text()}"))
         if send:
             for f in fired:
                 self.sender.send_text(f"🔔 FG ISRAEL VIEW · {f.message}")
         return fired
+
+    def maybe_check(self, every_s: float = 60.0) -> list[FiredAlert]:
+        """Revisión con freno (la app la llama en cada refresco; como mucho una vez por minuto)."""
+        if time.time() - self._last_check < every_s or (not self.rules() and not self.book.all()):
+            return []
+        self._last_check = time.time()
+        return self.check()
 
     def _eval_rule(self, r: dict, bars) -> str | None:
         coin, kind, value, market = r["coin"], r["kind"], r.get("value"), r.get("market", "crypto")
@@ -160,9 +179,10 @@ class PriceAlerts:
 
 
 def main() -> None:  # pragma: no cover - bucle en segundo plano
-    db = Database()
-    alerts = PriceAlerts(DataFeeder(), PositionBook(db), db)
-    print("Vigilando alertas cada 60 s (Ctrl+C para salir)…")
+    from engine.fgview import FGServices
+
+    alerts = FGServices.create(DataFeeder(), db=Database()).alerts  # Incluye el escudo anti-squeeze
+    print("Vigilando alertas y escudo anti-squeeze cada 60 s (Ctrl+C para salir)…")
     while True:
         for f in alerts.check():
             print(datetime.now().strftime("%H:%M:%S"), f.message)
