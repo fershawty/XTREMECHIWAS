@@ -249,6 +249,15 @@ jobs:
           - **Windows**: `FGIsraelView-Build1-Windows.zip` → descomprime y abre `FGIsraelView\FGIsraelView.exe`
           - **Mac Intel (macOS 12 Monterey o superior)**: `FGIsraelView-Build1-macOS-Intel.dmg` → arrastra a Aplicaciones; la primera vez Control + clic → Abrir
 
+          **Novedades v4.1**
+          - 🌙 **Modo SWING / nocturno**: para dejar la operación abierta hasta 12 h. Tendencia de 4 h + 1 h, SL estructural, 3–5x máximo, liquidación lejísimos del SL y Time Machine de caminos de 8–12 h.
+          - 🧊 **Anti-revancha**: 30 min sin volver a entrar en la misma cripto o dirección después de una pérdida.
+          - 🔍 **Revisor de historial**: pega el texto del PDF de Binance o sube el CSV/Excel y te marca liquidaciones, operaciones sin SL, revanchas, horas sin protección y memecoins.
+          - ⛔ **Sin SL no hay orden**: el Order Executor rechaza cualquier orden sin Stop Loss válido (antes de la liquidación).
+          - 👥 **Long/Short Ratio de Binance** en el anti-squeeze: si hay muchísimas cuentas en corto, no se abre SHORT.
+          - 💸 **Entradas post-only (maker 0.02%)** y 📈 **trailing stop** automático tras TP1.
+          - 🧮 Simulación de papel paso a paso (respeta los movimientos de SL del escudo y del trailing).
+
           **Novedades Build 1**
           - 📊 La gráfica con la recomendación de operación (LONG/SHORT, entrada, SL, TPs) se muestra fija arriba en TODAS las páginas (v4.0.2).
           - ⚡ Time Machine mucho más rápido (v4.0.3): descarga del historial en paralelo, primer resultado inmediato con velas de 5 min, precarga automática en segundo plano y barra de progreso con tiempos.

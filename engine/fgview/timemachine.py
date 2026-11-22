@@ -139,7 +139,9 @@ class TimeMachine:
 
     # ------------------------------------------------------------ simulación
     def run(self, plan: Plan, df: pd.DataFrame, bar_minutes: int = 1, sims: int | None = None,
-            liq_frac: float | None = None) -> TimeMachineResult:
+            liq_frac: float | None = None, horizon_min: tuple[int, int] = (15, 30),
+            block_min: tuple[int, int] = (15, 30)) -> TimeMachineResult:
+        """`horizon_min`: duración de cada simulación (15–30 min scalping; 480–720 min swing nocturno)."""
         if len(df) < 200:
             raise ValueError("Hacen falta al menos 200 velas para el Time Machine.")
         sims = int(sims or self.sims)
@@ -149,14 +151,18 @@ class TimeMachine:
             sims = PY_MAX_SIMS
         t0 = time.perf_counter()
         rel_h, rel_l, rel_c, atr_pct = self.prepare(df, bar_minutes)
-        bmin, bmax = max(1, round(15 / bar_minutes)), max(1, round(30 / bar_minutes))
+        bmin, bmax = max(1, round(block_min[0] / bar_minutes)), max(1, round(block_min[1] / bar_minutes))
+        hmin, hmax = max(1, round(horizon_min[0] / bar_minutes)), max(1, round(horizon_min[1] / bar_minutes))
+        if not self.native and hmax > 60 and sims > 20_000:  # Caminos largos en Python: menos simulaciones
+            notes.append(f"Núcleo C++ no disponible: 20,000 simulaciones (horizonte largo) en lugar de {sims:,}.")
+            sims = 20_000
         starts, band, extra = self.eligible_starts(atr_pct, bmax)
         notes += extra
         rng = np.random.default_rng(self.seed)
-        n_blocks = int(np.ceil(bmax / bmin)) + 1
+        n_blocks = int(np.ceil(hmax / bmin)) + 1
         block_starts = rng.choice(starts, size=(sims, n_blocks))
         block_lens = rng.integers(bmin, bmax + 1, size=(sims, n_blocks))
-        horizons = rng.integers(bmin, bmax + 1, size=sims)
+        horizons = rng.integers(hmin, hmax + 1, size=sims)
 
         s, e = plan.side, plan.entry
         params = dict(side=s, sl=s * (e - plan.stop_loss) / e, tp=[s * (t[0] - e) / e for t in plan.tps],

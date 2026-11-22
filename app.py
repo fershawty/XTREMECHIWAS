@@ -292,8 +292,12 @@ def squeeze_banner(req: AnalysisRequest) -> None:
         svc = get_services()
         snap = svc.loader.load(req.symbol if req.market == "crypto" else "DEMO/USDT", req.market,
                                exchange=req.exchange)
+        pos = (svc.recommender.positioning.get(svc.tiers.resolve(req.symbol))
+               if req.market == "crypto" and svc.recommender.positioning else None)
+        if pos is not None:
+            st.caption(f"👥 Long/Short Binance · {pos.text}")
         for side in ("SHORT", "LONG"):
-            rep = svc.recommender.squeeze.analyze(snap.df5, side, snap.funding)
+            rep = svc.recommender.squeeze.analyze(snap.df5, side, snap.funding, pos)
             if rep.danger:
                 color = "#F85149" if rep.risk == "alto" else "#F2D27A"
                 st.markdown(f'<div style="border:2px solid {color};background:rgba(248,81,73,.08);border-radius:10px;'
@@ -409,6 +413,7 @@ def build_pages(req: AnalysisRequest, layers: dict, auto: bool) -> dict[str, lis
             P(analysis, "Gráfica y señal", "📊", "grafica", default=True),
             P(easy, "Modo fácil", "✨", "facil"),
             P(page(ip.render_time_machine), "Time Machine", "⏳", "time-machine"),
+            P(page(ip.render_swing), "Modo Swing (noche)", "🌙", "swing"),
             P(page(ip.render_entry_timer), "Entry Timer", "⏱️", "entry-timer"),
             P(fgview, "FG VIEW pro", "🟡", "fgview"),
             P(page(ip.render_burnout), "BURN OUT ⛔", "🔥", "burn-out"),
@@ -423,6 +428,7 @@ def build_pages(req: AnalysisRequest, layers: dict, auto: bool) -> dict[str, lis
             P(page(ip.render_budget), "Budget Manager", "💰", "budget"),
             P(page(ip.render_executor), "Order Executor", "🤖", "executor"),
             P(lambda: render_journal(svc().journal), "Bitácora", "📒", "bitacora"),
+            P(page(ip.render_review), "Revisor de historial", "🔍", "revisor"),
         ],
         "Contexto": [
             P(page(ip.render_fundamentals), "Fundamentales cripto", "💎", "fundamentales"),

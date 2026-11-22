@@ -14,6 +14,7 @@ from engine.fgview.filters import FilterReport, FilterSet
 from engine.fgview.journal import DailyGuard, TradeJournal
 from engine.fgview.plan import Plan, PositionPlanner
 from engine.fgview.snapshot import MarketSnapshot, SnapshotLoader
+from engine.fgview.positioning import PositioningFeed
 from engine.fgview.squeeze import SqueezeGuard
 from engine.fgview.stats import OutcomeStats, SetupStatistics
 from engine.position_simulator import fmt_pct, fmt_px, fmt_usd
@@ -51,6 +52,7 @@ class ScalpRecommender:
         self.loader, self.filters, self.planner, self.stats = loader, filters, planner, stats
         self.journal, self.guard, self.news, self.cfg = journal, guard, news, config
         self.squeeze = SqueezeGuard()  # Protección contra squeezes (se puede sustituir en tests)
+        self.positioning = PositioningFeed()  # Long/Short ratio de Binance (None = desactivado)
 
     # ----------------------------------------------------------------- núcleo
     def external_blocks(self, capital: float) -> list[str]:
@@ -78,7 +80,9 @@ class ScalpRecommender:
         symbol = snap.symbol
         report = (self.filters.best(snap, symbol, blocks) if direction == "Auto"
                   else self.filters.evaluate(snap, direction, symbol, blocks))
-        sq = self.squeeze.analyze(snap.df5, report.direction, snap.funding) if self.squeeze else None
+        pos = self.positioning.get(self.planner.tiers.resolve(symbol)) if (
+            self.positioning is not None and snap.source != "demo") else None
+        sq = self.squeeze.analyze(snap.df5, report.direction, snap.funding, pos) if self.squeeze else None
         if sq is not None and sq.risk == "alto":
             report.blocks.append(sq.label + ": " + " · ".join(sq.reasons[:3]))
         plan = self.planner.plan(capital, symbol, report.direction, snap.price, snap.atr5,

@@ -38,8 +38,9 @@ class SqueezeReport:
     risk: str  # alto | medio | bajo
     points: int
     reasons: list[str] = field(default_factory=list)
-    max_move_pct: float = 0.0  # Peor movimiento en contra en 30 min (24 h), %
+    max_move_pct: float = 0.0  # Peor movimiento en contra en el horizonte (30 min en 24 h por defecto), %
     lev_cap: int = 125
+    move_label: str = "30 min (24 h)"
 
     @property
     def danger(self) -> bool:
@@ -52,13 +53,17 @@ class SqueezeReport:
 
     def text(self) -> str:
         return (f"{self.label}: no abras {self.direction} con apalancamiento alto. " + " · ".join(self.reasons)
-                + f" · Peor movimiento en 30 min (24 h): {self.max_move_pct:.2f}% → apalancamiento máximo "
+                + f" · Peor movimiento en {self.move_label}: {self.max_move_pct:.2f}% → apalancamiento máximo "
                 f"seguro {self.lev_cap}x.")
 
 
 class SqueezeGuard:
-    def __init__(self, window: int = 12, horizon: int = 6, lookback: int = 288) -> None:
-        self.window, self.horizon, self.lookback = window, horizon, lookback  # 1 h, 30 min, 24 h en velas de 5 min
+    def __init__(self, window: int = 12, horizon: int = 6, lookback: int = 288, drop_bars: int = 48,
+                 labels: tuple[str, str, str, str] = ("la última hora", "4 h", "30 min", "24 h")) -> None:
+        # Por defecto en velas de 5 min: ventana 1 h, horizonte 30 min, historial 24 h, caída en 4 h.
+        # El Modo SWING lo usa con velas de 1 h (ventana 12 h, horizonte 8 h, 7 días, caída en 48 h).
+        self.window, self.horizon, self.lookback, self.drop_bars = window, horizon, lookback, drop_bars
+        self.lbl_window, self.lbl_drop, self.lbl_move, self.lbl_lookback = labels
 
     @staticmethod
     def lev_cap_for(move_pct: float, safety: float = SAFETY) -> int:
@@ -81,7 +86,8 @@ class SqueezeGuard:
             move = 1 - fut[1:] / c[:-1]
         return float(np.nanmax(move) * 100) if len(move) else 0.0
 
-    def analyze(self, df5: pd.DataFrame, direction: str, funding: float | None = None) -> SqueezeReport:
+    def analyze(self, df5: pd.DataFrame, direction: str, funding: float | None = None,
+                positioning=None) -> SqueezeReport:
         """Riesgo de squeeze CONTRA `direction` (la posición que se quiere abrir)."""
         reasons: list[str] = []
         pts = 0
@@ -97,10 +103,10 @@ class SqueezeGuard:
             run = (price - ext) / atr if up else (ext - price) / atr
             if run >= 4:
                 pts += 2
-                reasons.append(f"{'rebotó' if up else 'cayó'} {run:.1f}× ATR desde el {'mínimo' if up else 'máximo'} de la última hora")
+                reasons.append(f"{'rebotó' if up else 'cayó'} {run:.1f}× ATR desde el {'mínimo' if up else 'máximo'} de {self.lbl_window}")
             elif run >= 2.5:
                 pts += 1
-                reasons.append(f"{'rebote' if up else 'caída'} de {run:.1f}× ATR en la última hora")
+                reasons.append(f"{'rebote' if up else 'caída'} de {run:.1f}× ATR en {self.lbl_window}")
         last3 = df5.iloc[-3:]
         green = (last3["close"] > last3["open"]) if up else (last3["close"] < last3["open"])
         vol_avg = df5["volume"].iloc[-30:-3].mean()
@@ -112,6 +118,15 @@ class SqueezeGuard:
             if len(r) and ((up and r.min() < 30 and r.iloc[-1] > 45) or (not up and r.max() > 70 and r.iloc[-1] < 55)):
                 pts += 1
                 reasons.append(f"RSI salió de {'sobreventa' if up else 'sobrecompra'} (giro en V)")
+        if positioning is not None:  # Long/Short ratio de Binance: el combustible del squeeze
+            crowd = positioning.short_pct if up else positioning.long_pct
+            limit_hi, limit_md = (58, 52) if up else (80, 74)
+            if crowd >= limit_hi:
+                pts += 2
+                reasons.append(f"{crowd:.0f}% de las cuentas en {'corto' if up else 'largo'}: muy concurrido")
+            elif crowd >= limit_md:
+                pts += 1
+                reasons.append(f"{crowd:.0f}% de las cuentas en {'corto' if up else 'largo'}")
         for col, name in (("ema_9", "EMA 9"), ("vwap", "VWAP")):
             if col in df5 and pd.notna(last.get(col)):
                 prev = df5.iloc[-self.window]
@@ -128,7 +143,7 @@ class SqueezeGuard:
                 pts += 1
                 reasons.append(f"funding alto ({funding * 100:.3f}%): muchos largos apalancados")
         # --- Agotamiento: el squeeze aún no empezó, pero el terreno está listo ---
-        d4 = df5.iloc[-48:]
+        d4 = df5.iloc[-self.drop_bars:]
         if up:
             drop = (float(d4["high"].max()) / price - 1) * 100
             drop_atr = (float(d4["high"].max()) - price) / atr if atr > 0 else 0
@@ -137,7 +152,8 @@ class SqueezeGuard:
             drop_atr = (price - float(d4["low"].min())) / atr if atr > 0 else 0
         if drop >= 4 or drop_atr >= 8:
             pts += 1
-            reasons.append(f"ya {'cayó' if up else 'subió'} {drop:.1f}% en 4 h: {'vender en corto' if up else 'comprar'} "
+            reasons.append(f"ya {'cayó' if up else 'subió'} {drop:.1f}% en {self.lbl_drop}: "
+                           f"{'vender en corto' if up else 'comprar'} "
                            "ahí es llegar tarde")
         rsi_now = last.get("rsi") if "rsi" in df5 else None
         if rsi_now is not None and pd.notna(rsi_now) and ((up and rsi_now < 30) or (not up and rsi_now > 70)):
@@ -149,7 +165,8 @@ class SqueezeGuard:
             reasons.append(f"precio fuera de la banda {'inferior' if up else 'superior'} de Bollinger")
         move = self.max_adverse_move(df5, direction)
         risk = "alto" if pts >= 3 else ("medio" if pts == 2 else "bajo")
-        return SqueezeReport(direction, risk, pts, reasons, move, self.lev_cap_for(move))
+        return SqueezeReport(direction, risk, pts, reasons, move, self.lev_cap_for(move),
+                             f"{self.lbl_move} ({self.lbl_lookback})")
 
 
 def liquidation_zones(df5: pd.DataFrame, levs: tuple[int, ...] = (100, 50, 25), bars: int = 288,

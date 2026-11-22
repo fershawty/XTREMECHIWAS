@@ -38,6 +38,8 @@ from engine.fgview.scanner import ChartScanner
 from engine.fgview.smartmoney import SmartMoneyTracker
 from engine.fgview.timemachine import TimeMachine
 from engine.fgview.timer import EntryTimer
+from engine.fgview.review import HistoryReviewer
+from engine.fgview.swing import SwingPlanner
 
 
 @dataclass
@@ -68,6 +70,8 @@ class FGServices:
     fundamentals: CryptoFundamentals | None = None
     smart_money: SmartMoneyTracker | None = None
     burnout: BurnOutStrategy | None = None
+    swing: SwingPlanner | None = None
+    reviewer: HistoryReviewer | None = None
     extras: dict = field(default_factory=dict)
 
     @classmethod
@@ -93,6 +97,7 @@ class FGServices:
         executor.on_close.append(_burn_hook)
         alerts = PriceAlerts(feeder, positions, db)
         alerts.on_squeeze = executor.shield  # Escudo anti-squeeze automático
+        alerts.on_tick = executor.trail  # Trailing stop en cada revisión
         return cls(config, tiers, loader, filters, planner, manager, stats, journal, recommender,
                    EasyModeAdvisor(recommender, manager, config), RecommenderBacktester(filters, planner, manager, config),
                    LadderPlanner(planner, config),
@@ -101,4 +106,6 @@ class FGServices:
                    timer=EntryTimer(config.bar_minutes), positions=positions,
                    risk=RiskManager(positions, guard, config), budget=BudgetManager(db, journal),
                    executor=executor, alerts=alerts, fundamentals=CryptoFundamentals(),
-                   smart_money=SmartMoneyTracker(), burnout=burnout)
+                   smart_money=SmartMoneyTracker(), burnout=burnout,
+                   swing=SwingPlanner(feeder, planner, config, recommender.positioning),
+                   reviewer=HistoryReviewer(tiers))

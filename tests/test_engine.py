@@ -701,3 +701,104 @@ def test_squeeze_exhaustion_blocks_late_short_and_shield(fgdb):
     assert fgdb.executor.shield(fgdb.positions.all()[0], 67.3, 0.2) is None  # No afloja el SL
     fgdb.executor.set_shield(False)
     assert fgdb.executor.shield(fgdb.positions.all()[0], 66.0, 0.2) is None
+
+
+# -----------------------------------------------------------------------------
+# v4.1: Swing, anti-revancha, revisor, post-only, SL obligatorio, trailing, long/short
+# -----------------------------------------------------------------------------
+HIST = """
+1 2026-11-21 05:32:36 260401361748 SOLUSDT LIQUIDATION BUY 69.3 69.1 4.91 4.91 339.281 0 FILLED 2026-11-21 05:32:36
+1 2026-11-21 00:55:50 260353141933 SOLUSDT LIMIT SELL 68.09 68.09 4.91 4.91 334.3219 0 FILLED 2026-11-21 00:55:54
+1 2026-11-21 00:37:46 260349162592 SOLUSDT MARKET BUY 0 66.61 7.71 7.71 513.5631 0 FILLED 2026-11-21 00:37:46
+1 2026-11-20 22:48:07 260322321856 SOLUSDT LIMIT SELL 66.16 66.2 7.71 7.71 510.402 0 FILLED 2026-11-20 22:48:07
+1 2026-11-20 22:47:49 260322222323 SOLUSDT MARKET BUY 0 66.2 14.79 14.79 979.098 0 FILLED 2026-11-20 22:47:49
+1 2026-11-20 22:40:59 260320226660 SOLUSDT LIMIT SELL 65.71 65.71 14.79 14.79 971.8509 0 FILLED 2026-11-20 22:41:58
+1 2026-11-20 22:39:53 260319896575 SOLUSDT LIMIT SELL 66.25 0 14.67 0 0 0 CANCELED 2026-11-20 22:40:43
+1 2026-11-20 15:26:02 16164061201 TRUMPUSDT MARKET BUY 0 0.836 9.23 9.23 7.71628 0 FILLED 2026-11-20 15:26:02
+1 2026-11-20 15:25:04 16164042131 TRUMPUSDT LIMIT SELL 0.835 0.835 9.23 9.23 7.70705 0 FILLED 2026-11-20 15:25:24
+1 2026-11-20 15:10:27 260229603356 SOLUSDT MARKET BUY 0 67.23 11.85 11.85 796.6755 0 FILLED 2026-11-20 15:10:27
+1 2026-11-20 15:00:54 260227478694 SOLUSDT LIMIT SELL 67.49 67.49 11.85 11.85 799.7565 0 FILLED 2026-11-20 15:00:54
+"""
+
+
+def test_history_reviewer_real_week(fg):
+    rep = fg.reviewer.review(HIST)
+    assert len(rep.trades) == 5 and rep.net == pytest.approx(-14.1, abs=0.3)
+    liq = [t for t in rep.trades if t.liquidated]
+    assert len(liq) == 1 and liq[0].entry == pytest.approx(68.09)
+    assert any("Revancha (18 s" in f for t in rep.trades for f in t.flags)
+    assert any("liquidación" in lesson for lesson in rep.lessons)
+    csv = "Time,Symbol,Type,Side,Average,Executed,Status\n2026-11-20 10:00:00,BTCUSDT,MARKET,BUY,100,1,FILLED\n" \
+          "2026-11-20 10:05:00,BTCUSDT,STOP_MARKET,SELL,99,0,CANCELED\n2026-11-20 10:10:00,BTCUSDT,MARKET,SELL,101,1,FILLED\n"
+    t = fg.reviewer.review(csv.encode(), "h.csv").trades[0]
+    assert t.direction == "LONG" and t.has_stop and t.pnl == pytest.approx(1 - 0.10, abs=0.01)
+
+
+def test_anti_revenge_blocks_reentry(fgdb):
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime.now(timezone.utc)
+    trades = [{"opened_at": (now - timedelta(minutes=12)).isoformat(), "duration_min": 7, "pnl": -7.9,
+               "coin": "SOL", "direction": "SHORT"}]
+    assert "Anti-revancha" in (fgdb.risk.revenge_block("SOL", "SHORT", trades, now) or "")
+    assert fgdb.risk.revenge_block("BTC", "LONG", trades, now) is None
+    assert fgdb.risk.revenge_block("SOL", "SHORT", trades, now + timedelta(minutes=40)) is None
+
+
+def test_swing_plan_is_safe_overnight(fg):
+    import pandas as pd
+
+    from engine.indicators import compute_all
+
+    def frame(n, freq, step):
+        idx = pd.date_range("2026-10-01", periods=n, freq=freq, tz="UTC")
+        c = pd.Series([100 + step * i + (i % 5 - 2) * 0.3 for i in range(n)], index=idx)
+        return compute_all(pd.DataFrame({"open": c.shift(1).fillna(c.iloc[0]), "high": c + 0.6, "low": c - 0.6,
+                                         "close": c, "volume": 100.0}, index=idx), intraday=False)
+
+    st = fg.swing.from_frames("SOL/USDT", frame(400, "1h", 0.05), frame(300, "4h", 0.2), 500)
+    assert st.direction == "LONG" and st.plan is not None and st.plan.leverage <= 5
+    p = st.plan
+    assert abs(p.entry - p.liquidation) >= 3 * abs(p.entry - p.stop_loss)  # Liquidación lejísimos del SL
+    assert p.tps[0][0] > p.entry > p.stop_loss and p.rr_net > 1
+    bad = fg.swing.from_frames("SOL/USDT", frame(400, "1h", -0.05), frame(300, "4h", 0.2), 500)
+    assert bad.plan is None  # 4 h y 1 h no coinciden -> esperar
+
+
+def test_executor_post_only_sl_required_and_trailing(fgdb):
+    import pandas as pd
+
+    plan = fgdb.planner.plan(1000, "BTC", "LONG", 100.0)
+    t = fgdb.executor.build_ticket(plan, "DEMO/USDT", "demo", post_only=True)
+    assert t.fees < plan.fees and t.sl_pnl > plan.sl_pnl  # Maker: menos comisión
+    bad = fgdb.executor.build_ticket(plan, "DEMO/USDT", "demo")
+    bad.stop_loss = 0
+    assert fgdb.executor.submit(bad, confirmed=True)["status"] == "rejected"  # Sin SL no hay orden
+    pos = fgdb.executor.submit(t, confirmed=True)["position"]
+    # Paso a paso: TP1 en la primera vela; luego el trailing aprieta el SL; la vela siguiente lo toca
+    idx = pd.date_range(pd.Timestamp(pos["opened_at"]).floor("min") + pd.Timedelta(minutes=1), periods=1, freq="1min")
+    up = pd.DataFrame({"open": 100.0, "high": plan.tps[0][0] + 0.01, "low": 99.95, "close": plan.tps[0][0]}, index=idx)
+    assert fgdb.executor.paper.evaluate(pos, up) is None and pos["stage"] == 1
+    fgdb.positions.update(pos["id"], stage=1, realized=pos["realized"], last_bar=pos["last_bar"])
+    pos = fgdb.positions.all()[0]
+    pos["trail"] = 0.05
+    assert fgdb.executor.trail(pos, plan.tps[0][0] + 0.2, None)  # Sube el SL
+    assert fgdb.executor.trail(pos, plan.tps[0][0] + 0.1, None) is None  # Nunca lo baja
+    idx2 = pd.date_range(idx[0] + pd.Timedelta(minutes=1), periods=1, freq="1min")
+    down = pd.DataFrame({"open": 100.5, "high": 100.5, "low": 99.0, "close": 99.2}, index=idx2)
+    res = fgdb.executor.paper.evaluate(fgdb.positions.all()[0], down)
+    assert res and res["pnl"] > 0  # Cobró TP1 y el resto salió en el trailing (en ganancia)
+
+
+def test_squeeze_uses_long_short_ratio(fg):
+    import pandas as pd
+
+    from engine.fgview.positioning import Positioning
+    from engine.indicators import compute_all
+
+    idx = pd.date_range("2026-11-20", periods=300, freq="5min", tz="UTC")
+    c = pd.Series([100.0] * 300, index=idx)
+    df = compute_all(pd.DataFrame({"open": c, "high": c + 0.1, "low": c - 0.1, "close": c, "volume": 100.0}, index=idx))
+    calm = fg.recommender.squeeze.analyze(df, "SHORT")
+    crowded = fg.recommender.squeeze.analyze(df, "SHORT", positioning=Positioning("SOL", 38, 62))
+    assert crowded.points == calm.points + 2 and any("cuentas en corto" in r for r in crowded.reasons)

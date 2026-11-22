@@ -9,13 +9,15 @@ Reglas antes de abrir cada operación:
 * Nunca 2 posiciones muy correlacionadas en la MISMA dirección (ej. BTC y ETH LONG).
   Correlación de retornos de 5 min > 0.8, o pareja conocida (BTC/ETH).
 * La liquidación debe quedar ≥ 3× más lejos que el SL (BURN OUT usa su propia regla: ≥ 2×).
+* 🧊 ANTI-REVANCHA: después de una pérdida, 30 min sin volver a entrar en la misma cripto
+  ni en la misma dirección (las operaciones de "recuperar lo perdido" son las que hunden cuentas).
 """
 
 from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import numpy as np
 import pandas as pd
@@ -69,9 +71,29 @@ class RiskCheck:
 
 class RiskManager:
     def __init__(self, book: PositionBook, guard: DailyGuard, config: FGConfig = DEFAULT_CONFIG,
-                 max_open: int = 2, corr_limit: float = 0.8) -> None:
+                 max_open: int = 2, corr_limit: float = 0.8, cooldown_min: int = 30) -> None:
         self.book, self.guard, self.cfg = book, guard, config
-        self.max_open, self.corr_limit = max_open, corr_limit
+        self.max_open, self.corr_limit, self.cooldown_min = max_open, corr_limit, cooldown_min
+
+    def revenge_block(self, coin: str, direction: str, trades: list[dict], now: datetime | None = None) -> str | None:
+        """Bloqueo anti-revancha si la última pérdida cerró hace menos de `cooldown_min` minutos."""
+        now = now or datetime.now(timezone.utc)
+        for t in reversed(trades):
+            if (t.get("pnl") or 0) >= 0:
+                continue
+            try:
+                opened = datetime.fromisoformat(str(t["opened_at"]).replace("Z", "+00:00"))
+            except (KeyError, ValueError):
+                continue
+            if opened.tzinfo is None:
+                opened = opened.replace(tzinfo=timezone.utc)
+            closed = opened + timedelta(minutes=float(t.get("duration_min") or 0))
+            ago = (now - closed).total_seconds() / 60
+            if 0 <= ago < self.cooldown_min and (t.get("coin") == coin or t.get("direction") == direction):
+                return (f"🧊 Anti-revancha: perdiste en {t.get('coin')} {t.get('direction')} hace {ago:.0f} min. "
+                        f"Espera {self.cooldown_min - ago:.0f} min antes de volver a entrar.")
+            break  # Solo cuenta la pérdida más reciente
+        return None
 
     @staticmethod
     def correlation(a: pd.DataFrame | None, b: pd.DataFrame | None, bars: int = 288) -> float | None:
@@ -96,6 +118,8 @@ class RiskManager:
         msg = self.guard.check(trades_today, capital)
         if msg:
             blocks.append(msg)
+        if (rv := self.revenge_block(coin, direction, trades_today)):
+            blocks.append(rv)
         open_pos = self.book.all()
         if len(open_pos) >= self.max_open:
             blocks.append(f"Ya tienes {len(open_pos)} posiciones abiertas (máximo {self.max_open}).")

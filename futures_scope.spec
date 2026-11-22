@@ -54,7 +54,7 @@ for package in ("engine", "engine/fgview", "strategies", "ui"):  # Incluye subpa
     dotted = package.replace("/", ".")
     hiddenimports.append(dotted)
     hiddenimports += [f"{dotted}.{f.stem}" for f in sorted(Path(package).glob("*.py")) if f.stem != "__init__"]
-hiddenimports += ["tradingview_ta", "streamlit.web.cli", "mplfinance", "six"]
+hiddenimports += ["tradingview_ta", "streamlit.web.cli", "mplfinance", "six", "openpyxl"]
 
 # Núcleo C++ (fgcore): se incluye si se compiló con `python setup_fgcore.py build_ext --inplace`
 _fgcore = sorted(Path(".").glob("fgcore*.pyd")) + sorted(Path(".").glob("fgcore*.so"))
@@ -109,8 +109,8 @@ if sys.platform == "darwin":
         info_plist={
             "CFBundleName": "FGIsraelView",
             "CFBundleDisplayName": "FG ISRAEL VIEW",
-            "CFBundleShortVersionString": "4.0.5",
-            "CFBundleVersion": "4.0.5",
+            "CFBundleShortVersionString": "4.1.0",
+            "CFBundleVersion": "4.1.0",
             "LSMinimumSystemVersion": "12.0",
             "NSHighResolutionCapable": True,
             "NSHumanReadableCopyright": "FG ISRAEL VIEW BUILD 1 · BY GUS X FER X ALFREDOBONUS",

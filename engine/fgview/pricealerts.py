@@ -59,6 +59,7 @@ class PriceAlerts:
         self._mem: list[dict] = []
         self.guard = SqueezeGuard()
         self.on_squeeze = None  # Callback (pos, precio, atr) -> texto: escudo del Order Executor
+        self.on_tick = None  # Callback (pos, precio, atr) -> texto: trailing stop
         self._last_check = 0.0
 
     # ----------------------------------------------------------------- reglas
@@ -124,6 +125,13 @@ class PriceAlerts:
                                         f"⚠️ {pos['coin']} {pos['direction']}: el precio ${fmt_px(price)} está a "
                                         f"{liq_dist / sl_dist:.2f}× la distancia del SL de tu liquidación "
                                         f"(${fmt_px(pos['liquidation'])}). Revisa la posición YA."))
+            if self.on_tick is not None:  # Trailing stop
+                try:
+                    act = self.on_tick(pos, price, None)
+                    if act:
+                        fired.append(FiredAlert(pos["coin"], "trail", act))
+                except Exception:  # noqa: BLE001
+                    pass
             try:  # Squeeze contra la posición abierta
                 sq = self.guard.analyze(compute_all(bars(pos["coin"], pos.get("market", "crypto"), "5m")),
                                         pos["direction"])

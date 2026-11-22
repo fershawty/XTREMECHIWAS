@@ -362,25 +362,37 @@ def render_executor(svc, req) -> None:
                    "(solo trading, SIN retiros, con lista de IPs). El bot verifica los permisos antes de operar.")
     symbol, market = _coin_picker(svc, req, "ex")
     capital = _capital()
-    exch = st.selectbox("Exchange", ["binance", "bybit"], key="ex_exch")
+    e1, e2, e3 = st.columns(3)
+    exch = e1.selectbox("Exchange", ["binance", "bybit"], key="ex_exch")
+    post_only = e2.toggle("Entrada post-only (maker 0.02%)", value=True, key="ex_post_only",
+                          help="Orden límite en el mejor precio del libro: pagas 0.02% en vez de 0.05%. Si en 20 s no "
+                               "se llena, se cancela (no persigue el precio).")
+    trail_on = e3.toggle("📈 Trailing stop", value=svc.executor.trailing_enabled(), key="ex_trail",
+                         help="Tras cobrar TP1, el SL sigue al precio a 0.5 × ATR (1 × ATR de 1 h en swing). Nunca se aleja.")
+    if trail_on != svc.executor.trailing_enabled():
+        svc.executor.set_trailing(trail_on)
     if st.button("🧾 Preparar orden", type="primary", key="ex_prep"):
         try:
             rec = svc.recommender.recommend(symbol, market, capital, exchange=req.exchange)
-            ticket = svc.executor.build_ticket(rec.plan, symbol, market, exch, "FG VIEW", rec.report.score)
+            ticket = svc.executor.build_ticket(rec.plan, symbol, market, exch, "FG VIEW", rec.report.score,
+                                               post_only=post_only, trailing=trail_on)
             st.session_state["ex_ticket"] = (ticket, rec)
         except Exception as exc:  # noqa: BLE001
             st.error(str(exc))
     if "ex_ticket" in st.session_state:
         ticket, rec = st.session_state["ex_ticket"]
         st.markdown("  \n".join(ticket.lines()))
-        st.caption(f"Semáforo FG VIEW: {rec.light} · confianza {rec.report.score}/100")
+        if rec is not None:
+            st.caption(f"Semáforo FG VIEW: {rec.light} · confianza {rec.report.score}/100")
+        if (problem := ticket.stop_problem()):
+            _banner(f"⛔ {problem}")
         today = svc.journal.today() if svc.journal else []
         rc = svc.risk.check(ticket.coin, ticket.direction, ticket.entry, ticket.stop_loss, ticket.liquidation, capital,
                             today)
-        for b in rc.blocks + ([] if rec.light != "rojo" else ["El semáforo FG VIEW está en rojo."]):
+        for b in rc.blocks + ([] if rec is None or rec.light != "rojo" else ["El semáforo FG VIEW está en rojo."]):
             _banner(f"⛔ {b}")
         ok = st.checkbox("Confirmo que revisé la orden y acepto el riesgo", key="ex_ok")
-        if st.button("🚀 Enviar orden", disabled=not ok or not rc.allowed, key="ex_send"):
+        if st.button("🚀 Enviar orden", disabled=not ok or not rc.allowed or bool(ticket.stop_problem()), key="ex_send"):
             res = svc.executor.submit(ticket, confirmed=ok, mode="live" if mode == "real" else "paper")
             if res.get("status") == "filled":
                 st.success("Orden enviada." + (" (papel)" if mode == "papel" else " Recuerda mover el SL a break-even "
@@ -605,3 +617,100 @@ def render_burnout(svc, req) -> None:
                 _banner(f"⛔ {p}")
     with details("🔬 Historial de intentos"):
         st.dataframe(pd.DataFrame(bo.bag().attempts), hide_index=True, width="stretch")
+
+
+# =============================================================================
+# 🌙 MODO SWING / NOCTURNO
+# =============================================================================
+def render_swing(svc, req) -> None:
+    st.markdown("### 🌙 Modo SWING · para dejar la operación abierta horas o toda la noche")
+    guide("El scalping dura 15–30 min. Si quieres dejar una operación abierta mientras duermes, necesitas otras reglas: "
+          "seguir la tendencia de 4 h y 1 h, un SL más amplio detrás de la estructura y apalancamiento BAJO (3–5x). "
+          "Así un movimiento de 5% en la noche te cuesta el SL, no la cuenta.",
+          ["Elige la cripto y pulsa «Buscar swing».", "Si 4 h y 1 h no coinciden, dice ESPERAR: respétalo.",
+           "Si da la operación, pon el SL en el exchange ANTES de irte a dormir."],
+          "Con 50x, SOL te liquida con 1.5% en contra. Con 3x necesitaría moverse ~33%.")
+    c1, c2, c3 = st.columns([1.4, 1, 1])
+    with c1:
+        symbol, market = _coin_picker(svc, req, "sw", tiers=("A", "B"))
+    direction = c2.selectbox("Dirección", ["Auto", "LONG", "SHORT"], key="sw_dir")
+    lev = c3.select_slider("Apalancamiento máx.", [1, 2, 3, 4, 5], 3, key="sw_lev")
+    capital = _capital()
+    if st.button("🌙 Buscar swing", type="primary", key="sw_go"):
+        try:
+            with st.spinner("Tendencia 4 h + 1 h, estructura, anti-squeeze y Time Machine de 8–12 h…"):
+                setup = svc.swing.build(symbol, market, capital, req.exchange, direction, lev)
+                tm = None
+                if setup.plan is not None:
+                    df, _ = svc.history.get(symbol, market, "5m", 90, exchange=req.exchange)
+                    tm = svc.time_machine.run(setup.plan, df, 5, sims=100_000, **svc.swing.time_machine_config())
+            st.session_state["sw_last"] = (setup, tm, symbol, market)
+        except Exception as exc:  # noqa: BLE001
+            st.error(f"No se pudo calcular el swing: {exc}")
+    if "sw_last" not in st.session_state:
+        return
+    setup, tm, symbol, market = st.session_state["sw_last"]
+    c = st.columns(3)
+    c[0].metric("Tendencia 4 h", setup.trend_4h)
+    c[1].metric("Tendencia 1 h", setup.trend_1h)
+    c[2].metric("Squeeze", setup.squeeze.risk if setup.squeeze else "—")
+    for w in setup.warnings:
+        _banner(f"⚠️ {w}", "#F2D27A", "rgba(242,210,122,.08)")
+    if setup.plan is None:
+        _banner("🌙 ESPERAR: esta noche no hay swing claro en esta cripto. No operar también es una decisión ganadora.",
+                "#F2D27A", "rgba(242,210,122,.06)")
+        return
+    if not setup.tradeable:
+        _banner("⛔ NO OPERAR: riesgo ALTO de squeeze en esta dirección.")
+    st.markdown(setup.text())
+    for r in setup.reasons:
+        st.caption(f"✓ {r}")
+    for n in setup.plan.notes:
+        st.caption(f"ℹ️ {n}")
+    if tm is not None:
+        st.markdown("**⏳ Time Machine (caminos de 8–12 h):**")
+        _tm_block(tm)
+    _banner("🛡️ Antes de dormir: SL puesto en el exchange, margen AISLADO, alertas activadas (o "
+            "python -m engine.fgview.pricealerts corriendo) y trailing stop activado.", "#F2D27A", "rgba(242,210,122,.06)")
+    if setup.tradeable and st.button("🧾 Preparar orden SWING en el Order Executor", key="sw_ticket"):
+        ticket = svc.executor.build_ticket(setup.plan, symbol, market, "binance", "SWING", max_hold_min=720,
+                                           post_only=bool(st.session_state.get("ex_post_only", True)))
+        st.session_state["ex_ticket"] = (ticket, None)
+        st.success("Orden preparada: ábrela en «Riesgo y capital → Order Executor» para revisarla y confirmarla.")
+
+
+# =============================================================================
+# 🔍 REVISOR DE HISTORIAL
+# =============================================================================
+def render_review(svc, req) -> None:
+    st.markdown("### 🔍 Revisor de historial · tus operaciones reales, revisadas")
+    guide("Pega tu historial de órdenes de Binance Futures (o sube el CSV/Excel) y la app reconstruye cada operación y "
+          "te marca los errores que más cuentas hunden: liquidaciones, operaciones sin SL, revanchas, horas abiertas "
+          "sin protección y memecoins.",
+          ["En Binance: Futuros → Historial de órdenes → Exportar (CSV/Excel), o abre el PDF y copia todo el texto.",
+           "Pégalo aquí o sube el archivo.", "Lee las lecciones: corrige primero la de arriba."])
+    up = st.file_uploader("Archivo CSV o Excel de Binance", type=["csv", "xlsx", "xls", "txt"], key="rv_file")
+    text = st.text_area("…o pega aquí el texto del historial (del PDF)", height=160, key="rv_text",
+                        placeholder="2026-11-20 15:00:54 260227478694 SOLUSDT LIMIT SELL 67.49 67.49 11.85 11.85 799.75 0 FILLED …")
+    if st.button("🔍 Revisar mis operaciones", type="primary", key="rv_go"):
+        try:
+            rep = (svc.reviewer.review(up.getvalue(), up.name) if up is not None else svc.reviewer.review(text or ""))
+            st.session_state["rv_last"] = rep
+        except Exception as exc:  # noqa: BLE001
+            st.error(f"No pude leer el historial: {exc}")
+    rep = st.session_state.get("rv_last")
+    if not rep:
+        return
+    if rep.trades:
+        k = st.columns(4)
+        k[0].metric("Operaciones", len(rep.trades))
+        k[1].metric("Win rate", f"{rep.win_rate:.0f}%")
+        k[2].metric("Neto estimado", fmt_usd(rep.net, True))
+        k[3].metric("Liquidaciones", sum(t.liquidated for t in rep.trades))
+    st.markdown("#### 📌 Lecciones (de la más importante a la menos)")
+    for lesson in rep.lessons:
+        st.markdown(f"- {lesson}")
+    if rep.trades:
+        st.dataframe(rep.table(), hide_index=True, width="stretch")
+        st.caption("PnL estimado con comisiones típicas (maker 0.02% / taker 0.05%). La liquidación cobra un extra que "
+                   "no aparece en el historial de órdenes.")

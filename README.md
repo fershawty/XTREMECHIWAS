@@ -33,6 +33,17 @@ Rediseño con menú lateral por secciones y un interruptor **🎓 PRINCIPIANTE G
 
 Variables nuevas en `.env`: `LIVE_TRADING_ENABLED` (modo real, por defecto `false`), `QUIVER_API_KEY` y `WHALE_ALERT_API_KEY` (opcionales).
 
+## 🛡️ v4.1: proteger la cuenta
+
+| Módulo | Clase | Qué hace |
+|---|---|---|
+| 🌙 Modo SWING | `SwingPlanner` | Operaciones de hasta 12 h: tendencia 4 h + 1 h, SL estructural, 3–5x, Time Machine de 8–12 h |
+| 🧊 Anti-revancha | `RiskManager.revenge_block` | 30 min de pausa tras una pérdida en la misma cripto o dirección |
+| 🔍 Revisor de historial | `HistoryReviewer` | Lee el historial de Binance (texto del PDF, CSV o Excel) y marca liquidaciones, falta de SL, revanchas… |
+| 👥 Long/Short Ratio | `PositioningFeed` | % de cuentas largas/cortas de Binance dentro del anti-squeeze |
+| 🧲 Anti-squeeze | `SqueezeGuard`, `liquidation_zones` | Rebotes/caídas violentas, agotamiento, zonas de liquidación y tope de apalancamiento |
+| 🤖 Executor | `OrderExecutor` | SL obligatorio, post-only (maker), trailing stop y escudo anti-squeeze |
+
 ## ⚙️ Python + C++ (v3.4)
 
 Los bucles más pesados están escritos en **C++** (`cpp/fgcore.cpp`), también con POO, y se usan desde Python con **pybind11**:
