@@ -42,6 +42,11 @@ def render_desk(svc, req) -> None:
         target = c1.selectbox("Cripto", opts, index=opts.index(base) if base in opts else 0, key="dk_coin",
                               format_func=lambda c: c if c.startswith("🔎") else f"{c} · {svc.tiers.label(c)}")
     direction = c2.selectbox("Dirección", ["Auto", "LONG", "SHORT"], key="dk_dir")
+    svc.desk.operable = st.toggle("🎲 Modo operable: dame siempre la mejor operación aunque la mesa no la recomiende",
+                                  value=True, key="dk_operable",
+                                  help="Si un agente la objeta, igual te da la operación más operable, marcada NO RECOMENDADA, "
+                                       f"con riesgo reducido (máx. {svc.desk.OPERABLE_RISK}%) y SL obligatorio. El piloto "
+                                       "automático solo abre las APROBADAS.")
     go = c3.button("▶ Correr la mesa", type="primary", key="dk_go", width="stretch")
     capital = _capital()
     if go:
@@ -80,8 +85,13 @@ def render_desk(svc, req) -> None:
         with st.expander("🔎 Ranking del Spotter (escaneo)"):
             for sym, sc, head in ranked[:15]:
                 st.caption(f"{sym} · {'⛔' if sc < 0 else f'{sc:.0f}/100'} · {head}")
-    if dec is not None and dec.approved and dec.ticket is not None:
-        st.markdown("### 🎯 Orden de la mesa")
+    if dec is not None and dec.ticket is not None:
+        st.markdown("### 🎯 Orden de la mesa" + (" · 🎲 OPERABLE (NO RECOMENDADA)" if dec.operable else " · ✅ APROBADA"))
+        if dec.operable:
+            b = dec.blocked_by
+            st.warning(f"🎲 Esta operación NO está respaldada por la mesa: {b.agent} la objetó ({b.headline[:140]}). "
+                       f"Va con riesgo reducido ({dec.risk_pct:.2f}% del capital) y SL obligatorio. "
+                       "Trátala como una apuesta: solo con dinero que aceptes perder.")
         st.markdown("  \n".join(dec.ticket.lines()))
         x, y = st.columns(2)
         if x.button("🧾 Llevar al Order Executor", key="dk_to_ex"):

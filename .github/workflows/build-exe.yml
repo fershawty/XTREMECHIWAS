@@ -249,6 +249,12 @@ jobs:
           - **Windows**: `FGView-V2-Windows.zip` → descomprime y abre `FGView\FGView.exe`
           - **Mac Intel (macOS 12 Monterey o superior)**: `FGView-V2-macOS-Intel.dmg` → arrastra a Aplicaciones; la primera vez Control + clic → Abrir
 
+          **Novedades v4.5 · personajes y modo operable**
+          - 👾 **Personajes propios** para los 7 agentes (explorador de un ojo, búho, mago, aleta, robot cubo, cangrejo y fantasma guardián) con ojos que parpadean y miran, y expresiones: sonríe al aprobar, ✕ y ceño al bloquear, dormido en espera.
+          - 🧭 Los agentes **recorren su gráfica mientras piensan**: el Spotter sigue las velas, el Edge sube y baja por el libro, el Taker se asoma al spread, el Prior camina sobre la cresta, el Kelly sobre la curva de capital, el Pricer suelta las bolitas del Galton y el Closer baja por la traza; con haz de escaneo y burbuja de pensamiento.
+          - ⚡ **Más rayos y nodos**: relámpagos ramificados del núcleo a los agentes y entre ellos, constelación de nodos conectados con pulsos de energía; personajes también en la sinapsis y el pipeline.
+          - 🎲 **Modo operable**: aunque la mesa no la recomiende, te da la mejor operación disponible marcada NO RECOMENDADA, con riesgo reducido (máx. 0.5%) y SL obligatorio. El piloto automático solo abre las aprobadas.
+
           **Novedades v4.4 · agentes trabajando en pantalla**
           - 🛸 Cada agente sale de su órbita y **vuela al panel donde trabaja** (Spotter → la cinta, Prior → las cordilleras, Pricer → el Galton, Edge → el libro, Kelly → el PNL, Taker → la escalera, Closer → la traza), con estela, el panel iluminado en su color y su etiqueta con el dato real.
           - 📊 Más parámetros: valor y traspaso de cada paso en la traza, gráfica de actividad, marcas ▲▼ de cruces de EMA, value area y contadores en la cinta, curva de campana con μ/σ en el Pricer y encabezado de cordilleras (activas, calientes, cresta).

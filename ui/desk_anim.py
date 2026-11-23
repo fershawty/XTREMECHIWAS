@@ -19,6 +19,7 @@ import json
 from html import escape
 
 from engine.fgview.desk import AGENT_META, AGENTS
+from ui.critters import CRITTERS_JS
 
 FONT = "'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace"
 FONT_JS = "JetBrains Mono, ui-monospace, Menlo, Consolas, monospace"  # Sin comillas: va dentro de cadenas JS
@@ -49,7 +50,9 @@ SYNAPSE_TEMPLATE = r"""
   text-align:center;opacity:0;transition:opacity .8s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 12px"></div>
 </div>
 <script>
+__CRITTERS__
 const D=__DATA__, LOGO=__LOGO__, FONT='__FONTJS__', STAGE=__STAGE__;
+const MOOD=n=>n.status==='pass'?'pass':n.status==='block'?'block':n.status==='info'?'info':'idle';
 const W=document.getElementById('w'),C=document.getElementById('c'),X=C.getContext('2d'),cards=document.getElementById('cards');
 let w=0,h=0,dpr=1,t0=performance.now(),nodes=[],trees=[],bokeh=[],BG=null,DEN=null,cx=0,cy=0;
 const OK='#3DDC97',BAD='#FF4D6D';
@@ -137,7 +140,7 @@ function frame(now){
   bokeh.forEach(b=>{b.y-=b.v; if(b.y<-5)b.y=STAGE; const g=X.createRadialGradient(b.x,b.y,0,b.x,b.y,b.r*4);
     g.addColorStop(0,rgba(b.c,b.a*(.6+.4*Math.sin(T+b.x)))); g.addColorStop(1,rgba(b.c,0)); X.fillStyle=g; X.beginPath(); X.arc(b.x,b.y,b.r*4,0,6.283); X.fill();});
   const evaluated=nodes.filter(n=>n.status!=='idle').length, v=D.verdict;
-  const vc=v==='approved'?'#F2D27A':v==='blocked'?BAD:'#D4AF37';
+  const vc=v==='approved'?'#F2D27A':v==='operable'?'#F5A623':v==='blocked'?BAD:'#D4AF37';
   // Dendritas (revelado progresivo por agente)
   if(DEN){nodes.forEach((n,i)=>{const act=T-i*STEP; const r=n.status==='idle'?1:Math.max(0,Math.min(1,act/0.7));
     if(r<=0) return; X.save(); X.beginPath(); X.arc(n.x,n.y,30+r*230,0,6.283); X.clip(); X.drawImage(DEN,0,0,w,h); X.restore();});}
@@ -165,13 +168,13 @@ function frame(now){
     if(on&&act<1.3){X.strokeStyle=rgba(c,1-act/1.3); X.lineWidth=2; X.beginPath(); X.arc(sx,sy,R+act*40,0,6.283); X.stroke();}
     const halo=X.createRadialGradient(sx,sy,R*.4,sx,sy,R*3); halo.addColorStop(0,rgba(n.color,on?.45:.12)); halo.addColorStop(1,rgba(n.color,0));
     X.fillStyle=halo; X.beginPath(); X.arc(sx,sy,R*3,0,6.283); X.fill();
-    const body=X.createRadialGradient(sx-R*.35,sy-R*.4,1,sx,sy,R); body.addColorStop(0,on?'#ffffff':'#9aa3b5'); body.addColorStop(.35,rgba(n.color,on?.95:.45)); body.addColorStop(1,'#070a10');
-    X.fillStyle=body; X.beginPath(); X.arc(sx,sy,R,0,6.283); X.fill();
+    // El personaje del agente en el soma de su neurona
+    X.fillStyle='rgba(7,10,16,.85)'; X.beginPath(); X.arc(sx,sy,R+2,0,6.283); X.fill();
     X.save(); X.translate(sx,sy); X.rotate(T*(i%2?.6:-.6)); X.setLineDash([2,5]); X.strokeStyle=rgba(on?c:n.color,on?.9:.35); X.lineWidth=1.2;
     X.beginPath(); X.arc(0,0,R+7,0,6.283); X.stroke(); X.restore(); X.setLineDash([]);
     if(on){X.strokeStyle=c; X.lineWidth=2.4; X.beginPath(); X.arc(sx,sy,R+3,-Math.PI/2,-Math.PI/2+6.283*Math.min(1,act/.8)); X.stroke();}
-    X.font='17px system-ui,Apple Color Emoji,Segoe UI Emoji'; X.textAlign='center'; X.textBaseline='middle'; X.fillText(n.icon,sx,sy+1);
-    X.font='700 9.5px '+FONT; X.fillStyle=on?'#ECE8DC':'#7d8598'; X.fillText(n.key,sx,sy+R+16);
+    drawCritter(X,n.key,sx,sy-1,R*.74,n.color,T+i,on?MOOD(n):'idle',(cx-sx)/240,(cy-sy)/240);
+    X.textAlign='center'; X.textBaseline='middle'; X.font='700 9.5px '+FONT; X.fillStyle=on?'#ECE8DC':'#7d8598'; X.fillText(n.key,sx,sy+R+18);
     if(n.card&&(on||n.status==='idle')&&n.card.style.opacity!=='1'){n.card.style.opacity='1'; n.card.style.transform='none';}
   });
   // Chispas
@@ -189,18 +192,22 @@ function frame(now){
   for(let k=0;k<72;k++){const a=k/72*6.283, r1=Rc+44, r2=r1+(k%6?4:9); X.strokeStyle=rgba(vc,k%6?.25:.6); X.lineWidth=1;
     X.beginPath(); X.moveTo(r1*Math.cos(a),r1*Math.sin(a)); X.lineTo(r2*Math.cos(a),r2*Math.sin(a)); X.stroke();}
   X.rotate(-T*.7); X.setLineDash([16,10,2,10]); X.strokeStyle=rgba(vc,.45); X.beginPath(); X.arc(0,0,Rc+60,0,6.283); X.stroke(); X.setLineDash([]); X.restore();
-  // Rayos de aprobación
-  if(done&&v==='approved'&&Math.random()<.18) bolts.push({i:Math.floor(Math.random()*nodes.length),l:1});
-  bolts=bolts.filter(b=>b.l>0); bolts.forEach(b=>{const n=nodes[b.i]; X.strokeStyle=rgba('#FFF4C8',b.l); X.lineWidth=1.4; X.shadowColor='#F2D27A'; X.shadowBlur=14;
-    X.beginPath(); X.moveTo(cx,cy); for(let k=1;k<=8;k++){const t=k/8; X.lineTo(cx+(n.x-cx)*t+(Math.random()-.5)*24*(1-t),cy+(n.y-cy)*t+(Math.random()-.5)*24*(1-t));}
-    X.stroke(); X.shadowBlur=0; b.l-=.12;});
+  // Rayos: al llegar cada pulso, en la aprobación y chispazos entre neuronas vecinas
+  if(arrive&&Math.random()<.5) bolts.push({i:Math.max(0,Math.min(nodes.length-1,lastFire)),l:1});
+  if(done&&(v==='approved'||v==='operable')&&Math.random()<.18) bolts.push({i:Math.floor(Math.random()*nodes.length),l:1});
+  if(Math.random()<.05){const i=Math.floor(Math.random()*(nodes.length-1)); bolts.push({i,j:i+1,l:1});}
+  bolts=bolts.filter(b=>b.l>0); bolts.forEach(b=>{const n=nodes[b.i], A=b.j!=null?{x:nodes[b.j].x,y:nodes[b.j].y}:{x:cx,y:cy}, c=b.j!=null?'#B8E1FF':(n.status==='block'?BAD:'#FFF4C8');
+    X.strokeStyle=rgba(c,b.l); X.lineWidth=1.5; X.shadowColor=c; X.shadowBlur=16;
+    X.beginPath(); X.moveTo(A.x,A.y); for(let k=1;k<=10;k++){const t=k/10, jx=A.x+(n.x-A.x)*t+(k<10?(Math.random()-.5)*28*(1-Math.abs(.5-t)):0), jy=A.y+(n.y-A.y)*t+(k<10?(Math.random()-.5)*28*(1-Math.abs(.5-t)):0); X.lineTo(jx,jy);
+      if(k===4&&Math.random()<.6){X.stroke(); X.beginPath(); X.moveTo(jx,jy); X.lineTo(jx+(Math.random()-.5)*50,jy+(Math.random()-.5)*50); X.stroke(); X.beginPath(); X.moveTo(jx,jy);}}
+    X.stroke(); X.shadowBlur=0; b.l-=.1;});
   if(done&&v!=='idle'){const k=((T-evaluated*STEP-.8)%2.4)/2.4; X.strokeStyle=rgba(vc,(1-k)*.85); X.lineWidth=2.5; X.beginPath(); X.arc(cx,cy,Rc+k*150,0,6.283); X.stroke();}
   // Esfera brillante con el logo
   const sph=X.createRadialGradient(cx-Rc*.35,cy-Rc*.4,Rc*.1,cx,cy,Rc); sph.addColorStop(0,'#ffffff'); sph.addColorStop(.55,'#d8dce6'); sph.addColorStop(1,'#7b8496');
   X.shadowColor=vc; X.shadowBlur=40; X.fillStyle=sph; X.beginPath(); X.arc(cx,cy,Rc,0,6.283); X.fill(); X.shadowBlur=0;
   X.fillStyle='rgba(255,255,255,.55)'; X.beginPath(); X.ellipse(cx-Rc*.3,cy-Rc*.45,Rc*.35,Rc*.16,-.5,0,6.283); X.fill();
   if(img.complete){X.save(); X.beginPath(); X.arc(cx,cy,Rc*.78,0,6.283); X.clip(); X.drawImage(img,cx-Rc*.78,cy-Rc*.78,Rc*1.56,Rc*1.56); X.restore();}
-  if(done){const lab=(v==='approved'?'◆ ORDEN APROBADA ◆':v==='blocked'?'✕ NO OPERAR':'EN ESPERA')+
+  if(done){const lab=(v==='approved'?'◆ ORDEN APROBADA ◆':v==='operable'?'🎲 OPERABLE · NO RECOMENDADA':v==='blocked'?'✕ NO OPERAR':'EN ESPERA')+
       (D.prob!=null?'   '+(D.direction||'')+' '+D.symbol+' · P(TP1) '+D.prob+'%':'');
     X.font='700 10.5px '+FONT; const tw=X.measureText(lab).width+28; X.fillStyle='rgba(5,7,11,.85)'; X.strokeStyle=rgba(vc,.6);
     X.beginPath(); X.roundRect(cx-tw/2,26,tw,22,11); X.fill(); X.stroke(); X.fillStyle=vc; X.textAlign='center'; X.textBaseline='middle'; X.fillText(lab,cx,37);
@@ -228,15 +235,15 @@ window.addEventListener('resize',layout); layout(); requestAnimationFrame(frame)
 
 def synapse_html(decision, logo_svg: str, height: int = 600) -> str:
     agents = _agents_payload(decision)
-    verdict = ("approved" if decision and decision.approved else "blocked" if decision and decision.blocked_by
-               else "idle")
+    verdict = ("approved" if decision and decision.approved else "operable" if decision and decision.operable
+               else "blocked" if decision and decision.blocked_by else "idle")
     summary = decision.summary() if decision else "Pulsa «Correr la mesa» para que los agentes analicen el mercado."
     weights = [round(r.get("weight", 1.0), 3) for r in (decision.rotation if decision else [])] or [1.0] * 6
     data = json.dumps({"agents": agents, "verdict": verdict, "summary": summary, "weights": weights,
                        "symbol": decision.symbol if decision else "", "direction": (decision.direction or "") if decision else "",
                        "prob": round(decision.probability, 1) if decision and decision.probability else None})
     stage = height - 100
-    return (SYNAPSE_TEMPLATE.replace("__DATA__", data).replace("__LOGO__", json.dumps(logo_svg))
+    return (SYNAPSE_TEMPLATE.replace("__CRITTERS__", CRITTERS_JS).replace("__DATA__", data).replace("__LOGO__", json.dumps(logo_svg))
             .replace("__FONTJS__", FONT_JS).replace("__FONTCSS__", FONT).replace("__STAGE__", str(stage))
             .replace("__H__", str(height)))
 

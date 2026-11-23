@@ -119,6 +119,11 @@ class DeskDecision:
         return bool(self.results) and all(r.status != "block" for r in self.results) and self.ticket is not None
 
     @property
+    def operable(self) -> bool:
+        """Hay orden lista aunque algún agente la objetara (🎲 modo operable, riesgo reducido)."""
+        return self.ticket is not None and not self.approved
+
+    @property
     def blocked_by(self) -> AgentResult | None:
         return next((r for r in self.results if r.status == "block"), None)
 
@@ -130,6 +135,10 @@ class DeskDecision:
             return (f"✅ La mesa APRUEBA {self.direction} {self.symbol}: P(TP1) {self.probability or 0:.0f}% · ventaja "
                     f"{self.edge_r or 0:+.2f}R · riesgo {self.risk_pct or 0:.2f}% del capital.")
         b = self.blocked_by
+        if self.operable:
+            return (f"🎲 OPERABLE (NO RECOMENDADA) {self.direction} {self.symbol}: P(TP1) {self.probability or 0:.0f}% · "
+                    f"ventaja {self.edge_r or 0:+.2f}R · riesgo reducido {self.risk_pct or 0:.2f}% · objetó {b.agent}: "
+                    f"{b.headline[:90]}")
         return f"⛔ La mesa NO opera {self.symbol}: {b.agent} bloqueó → {b.headline}" if b else "Sin decisión."
 
 
@@ -243,11 +252,12 @@ class Calibrator:
 # La mesa
 # =============================================================================
 class Desk:
+    OPERABLE_RISK = 0.5  # % de riesgo máximo para operaciones NO recomendadas (🎲 modo operable)
     def __init__(self, services, config: FGConfig = DEFAULT_CONFIG, min_prob: float = 55.0, min_edge_r: float = 0.05,
-                 kelly_fraction: float = 0.25, min_prior: float = 40.0) -> None:
+                 kelly_fraction: float = 0.25, min_prior: float = 40.0, operable: bool = True) -> None:
         self.s, self.cfg = services, config
         self.min_prob, self.min_edge_r, self.kelly_fraction = min_prob, min_edge_r, kelly_fraction
-        self.min_prior = min_prior
+        self.min_prior, self.operable = min_prior, operable
         self.rotation = SignalRotation(services.filters)
         self.calibrator = Calibrator(services.time_machine, config)
 
@@ -371,15 +381,21 @@ class Desk:
         return res, snap, rep, rot, wscore
 
     def run(self, symbol: str, market: str, capital: float, exchange: str | None = None, direction: str = "Auto",
-            calibrate: bool = True, fan: bool = True, send_mode: str | None = None) -> DeskDecision:
-        """Corre la cadena completa. `send_mode`: None = solo preparar; "paper"/"live" = enviar si aprueba."""
+            calibrate: bool = True, fan: bool = True, send_mode: str | None = None,
+            operable: bool | None = None) -> DeskDecision:
+        """
+        Corre la cadena completa. `send_mode`: None = solo preparar; "paper"/"live" = enviar (SOLO si aprueba).
+        `operable` (por defecto el de la mesa): aunque un agente bloquee, la cadena sigue y entrega la mejor
+        operación disponible marcada como NO RECOMENDADA, con riesgo reducido (máx. OPERABLE_RISK %) y SL.
+        """
+        operable = self.operable if operable is None else operable
         s = self.s
         res, snap, rep, rot, wscore = self.spot(symbol, market, capital, exchange, direction)
         dec = DeskDecision(symbol, rep.direction, [res], rotation=rot, tape=self.tape(snap),
                            ridges=self.ridges(snap, rep.direction))
         dec.raw.update(score=rep.score, wscore=wscore, book=(snap.order_book or {}).get("imbalance"),
                        z=self.vwap_z(snap.df5))
-        if res.status == "block":
+        if res.status == "block" and not operable:
             return dec
         coin = s.tiers.resolve(symbol)
         # --- PRIOR ---
@@ -396,7 +412,7 @@ class Desk:
         dec.results.append(AgentResult("PRIOR", st_p, f"TP1 en {p_prior:.0f}% de {prior.samples} casos "
                                        f"{'parecidos' if prior.similar else 'del historial'} · SL primero {prior.sl_first:.0f}%",
                                        value=p_prior, ms=(time.perf_counter() - t0) * 1000))
-        if st_p == "block":
+        if st_p == "block" and not operable:
             return dec
         # --- PRICER ---
         t0 = time.perf_counter()
@@ -415,7 +431,7 @@ class Desk:
         dec.results.append(AgentResult("PRICER", st_pr, f"P(TP1) {p_final:.1f}% (Time Machine {tm.p_tp1:.1f}% · base "
                                        f"{p_prior:.0f}%){cal_txt} · {tm.sims:,} caminos",
                                        value=p_final, ms=(time.perf_counter() - t0) * 1000))
-        if st_pr == "block":
+        if st_pr == "block" and not operable:
             return dec
         # --- EDGE ---
         t0 = time.perf_counter()
@@ -437,7 +453,7 @@ class Desk:
                 f" · ⛔ ventaja menor que el mínimo ({self.min_edge_r:+.2f}R)"
         st_e = "pass" if edge_ok and not guards else "block"
         dec.results.append(AgentResult("EDGE", st_e, head, value=tm.ev_r, ms=(time.perf_counter() - t0) * 1000))
-        if st_e == "block":
+        if st_e == "block" and not operable:
             return dec
         # --- KELLY ---
         t0 = time.perf_counter()
@@ -447,13 +463,17 @@ class Desk:
         if budget is not None and budget.defensive:
             kelly_risk /= 2
         risk = min(table_risk, kelly_risk)
-        st_k = "pass" if risk >= 0.1 else "block"
+        objected = any(r.status == "block" for r in dec.results)
+        st_k = "pass" if risk >= 0.1 and not objected else "block"
+        if operable and (objected or risk < 0.1):  # 🎲 Operable: tamaño mínimo porque la mesa no lo respalda
+            risk, st_k = min(table_risk, self.OPERABLE_RISK), "info"
         plan = s.planner.plan(capital, symbol, rep.direction, snap.price, snap.atr5, lev_cap=sq.lev_cap, risk_pct=risk)
         dec.plan, dec.risk_pct = plan, risk
         dec.results.append(AgentResult(
             "KELLY", st_k, f"¼ Kelly {kelly_risk:.2f}% · tabla {table_risk:g}% → riesgo {risk:.2f}% "
             f"({fmt_usd(plan.risk_usd)}) · {plan.leverage}x · margen {fmt_usd(plan.margin)}"
-            + (" · modo defensivo" if budget is not None and budget.defensive else ""),
+            + (" · modo defensivo" if budget is not None and budget.defensive else "")
+            + (" · 🎲 OPERABLE: riesgo reducido" if st_k == "info" else ""),
             value=risk, ms=(time.perf_counter() - t0) * 1000))
         if st_k == "block":
             return dec
@@ -461,13 +481,15 @@ class Desk:
         t0 = time.perf_counter()
         ticket = s.executor.build_ticket(plan, symbol, market, exchange or "binance", "DESK", rep.score, post_only=True)
         dec.ticket = ticket
-        sent_txt = "orden lista: esperando tu confirmación"
-        if send_mode in ("paper", "live"):
+        objected = any(r.status == "block" for r in dec.results)
+        sent_txt = ("🎲 OPERABLE · NO RECOMENDADA: solo tú decides" if objected
+                    else "orden lista: esperando tu confirmación")
+        if send_mode in ("paper", "live") and not objected:  # El piloto solo envía lo APROBADO
             out = s.executor.submit(ticket, confirmed=True, mode=send_mode)
             dec.sent = out.get("status") == "filled"
             sent_txt = (f"ENVIADA ({'papel' if send_mode == 'paper' else 'REAL'})" if dec.sent
                         else f"no enviada: {(out.get('problems') or [out.get('message', '')])[0]}")
-        dec.results.append(AgentResult("TAKER", "pass", f"{plan.direction} {fmt_px(plan.entry)} post-only · SL "
+        dec.results.append(AgentResult("TAKER", "info" if objected else "pass", f"{plan.direction} {fmt_px(plan.entry)} post-only · SL "
                                        f"{fmt_px(plan.stop_loss)} · TP1 {fmt_px(plan.tps[0][0])} ({fmt_pct(plan.tps[0][1])}) "
                                        f"· {sent_txt}", ms=(time.perf_counter() - t0) * 1000))
         dec.results.append(self.close_agent())
@@ -498,14 +520,18 @@ class Desk:
                 break
         ranked.sort(key=lambda x: x[1], reverse=True)
         best = None
-        for sym, sc, _ in ranked[:top]:
-            if sc < 0:
-                continue
+        cands = [r for r in ranked if r[1] >= 0][:top] or ([r for r in ranked if r[1] > -2][:top] if self.operable else [])
+        for sym, sc, _ in cands:
             dec = self.run(sym, market, capital, exchange, send_mode=send_mode)
             if dec.approved:
                 return dec, ranked
-            best = best or dec
+            if best is None or self._operable_score(dec) > self._operable_score(best):
+                best = dec  # 🎲 la más operable: mayor probabilidad y ventaja
         return best, ranked
+
+    @staticmethod
+    def _operable_score(dec: DeskDecision) -> float:
+        return (dec.probability or 0) + (dec.edge_r or -1) * 100 + (50 if dec.ticket is not None else 0)
 
 
 # =============================================================================

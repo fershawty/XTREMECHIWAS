@@ -920,3 +920,21 @@ def test_desk_terminal_payload_and_html(fgdb):
     assert "__DATA__" not in html and "ORBITALES" in html and "EL PRICER" in html
     idle = terminal_html(build_payload(fgdb, None), _logo_svg())  # Sin decisión también se dibuja
     assert "FG DESK" in idle
+
+
+def test_desk_operable_mode_gives_trade_but_never_autosends(fgdb):
+    dec = _desk_forced(fgdb, ev=-1.0).run("DEMO/USDT", "demo", 1000, send_mode="paper")
+    assert not dec.approved and dec.operable and dec.ticket is not None
+    assert dec.risk_pct <= fgdb.desk.OPERABLE_RISK and dec.ticket.stop_problem() is None
+    assert not dec.sent and not fgdb.positions.all()  # El piloto NO abre operaciones no recomendadas
+    assert "OPERABLE" in dec.summary()
+    strict = fgdb.desk.run("DEMO/USDT", "demo", 1000, operable=False)
+    assert strict.ticket is None and strict.blocked_by is not None
+
+
+def test_critters_js_is_embedded():
+    from ui.critters import CRITTERS_JS
+
+    assert "function drawCritter" in CRITTERS_JS
+    for key in ("SPOTTER", "PRIOR", "PRICER", "EDGE", "KELLY", "TAKER"):
+        assert f"key==='{key}'" in CRITTERS_JS
