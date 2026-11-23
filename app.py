@@ -43,6 +43,9 @@ from ui.ladder_tab import render_ladder  # noqa: E402
 from ui import pro_pages as ip  # noqa: E402
 from ui.desk_page import render_desk  # noqa: E402
 from ui.mode import beginner, mode_switch  # noqa: E402
+from ui import sidebar_ui  # noqa: E402
+from engine.config import APP_VERSION  # noqa: E402
+import streamlit.components.v1 as components  # noqa: E402
 
 ui.load_css()
 
@@ -92,15 +95,15 @@ def _apply_query_params() -> None:
 # =============================================================================
 # Barra lateral
 # =============================================================================
-def sidebar() -> tuple[AnalysisRequest, dict, bool]:
-    """Dibuja los controles y devuelve (petición, capas, auto-análisis)."""
+def sidebar() -> tuple[AnalysisRequest, dict, bool, object]:
+    """Dibuja el panel lateral y devuelve (petición, capas, auto-análisis, contenedor del menú)."""
     with st.sidebar:
-        st.markdown(
-            f'<div class="fs-brand" style="margin-bottom:0.6rem">{ui.logo_img(small=True)}'
-            f'<div><div class="fs-logo" style="font-size:1rem">{APP_NAME}</div>'
-            f'<div class="fs-credit">{BUILD_TAG}</div></div></div>',
-            unsafe_allow_html=True,
-        )
+        components.html(sidebar_ui.brand_html(ui._logo_svg(), APP_VERSION), height=74)
+        st.markdown(sidebar_ui.market_card(st.session_state.get("brief")), unsafe_allow_html=True)
+        nav_box = st.container()  # El menú se dibuja aquí cuando ya existen las páginas
+        st.markdown('<div class="fg-sec"><span>MESA DE AGENTES</span><i></i></div>', unsafe_allow_html=True)
+        components.html(sidebar_ui.agents_html(st.session_state.get("dk_last")), height=168)
+        st.markdown('<div class="fg-sec"><span>CONFIGURACIÓN</span><i></i></div>', unsafe_allow_html=True)
         mode_switch()
 
         st.markdown('<div class="fs-side-title">Mercado</div>', unsafe_allow_html=True)
@@ -163,7 +166,20 @@ def sidebar() -> tuple[AnalysisRequest, dict, bool]:
     req = AnalysisRequest(symbol=symbol, market=market.value, timeframe=timeframe, contract=contract,
                           exchange=exchange, strategy=strategy, equity=equity, risk_pct=risk_pct,
                           leverage=leverage, sl_method=sl_method, limit=limit, use_context=use_context)
-    return req, layers, auto
+    return req, layers, auto, nav_box
+
+
+def remember_brief(result) -> None:
+    """Guarda un resumen del último análisis para la tarjeta de mercado de la barra lateral."""
+    try:
+        md, sig = result.market_data, result.signal
+        closes = [float(x) for x in result.df["close"].iloc[-40:]]
+        st.session_state["brief"] = {"symbol": md.symbol.upper(), "timeframe": md.timeframe, "price": ui.fmt_price(md.last_price),
+                                     "change": float(md.change_pct), "closes": closes,
+                                     "direction": sig.direction if sig is not None else None,
+                                     "score": float(sig.score) if sig is not None else 0.0}
+    except Exception:  # noqa: BLE001 - es un extra visual
+        pass
 
 
 # =============================================================================
@@ -246,6 +262,7 @@ def main_panel(req: AnalysisRequest, layers: dict) -> None:
         ui.render_footer()
         return
 
+    remember_brief(result)
     ui.render_banners(result.warnings)
     squeeze_banner(req)
     if result.is_new_alert:
@@ -350,6 +367,7 @@ def chart_strip(req: AnalysisRequest, layers: dict) -> None:
     if not result.ok:
         ui.render_banners([result.error or "Error desconocido"], "err")
         return
+    remember_brief(result)
     ui.render_banners(result.warnings[:1])
     if req.market == "crypto":  # Precarga el historial del Time Machine en segundo plano
         get_services().history.prefetch(req.symbol, "crypto", ("5m", "1m"), 90, req.exchange)
@@ -411,42 +429,70 @@ def build_pages(req: AnalysisRequest, layers: dict, auto: bool) -> dict[str, lis
     page = lambda render: (lambda: render(svc(), req))  # noqa: E731
     return {
         "Operar": [
-            P(analysis, "Gráfica y señal", "📊", "grafica", default=True),
-            P(page(render_desk), "FG DESK · 7 agentes", "🧠", "desk"),
-            P(easy, "Modo fácil", "✨", "facil"),
-            P(page(ip.render_time_machine), "Time Machine", "⏳", "time-machine"),
-            P(page(ip.render_swing), "Modo Swing (noche)", "🌙", "swing"),
-            P(page(ip.render_entry_timer), "Entry Timer", "⏱️", "entry-timer"),
-            P(fgview, "FG VIEW pro", "🟡", "fgview"),
-            P(page(ip.render_burnout), "BURN OUT ⛔", "🔥", "burn-out"),
+            P(analysis, "Gráfica y señal", ":material/candlestick_chart:", "grafica", default=True),
+            P(page(render_desk), "FG DESK", ":material/hub:", "desk"),
+            P(easy, "Modo fácil", ":material/auto_awesome:", "facil"),
+            P(page(ip.render_time_machine), "Time Machine", ":material/history:", "time-machine"),
+            P(page(ip.render_swing), "Modo Swing (noche)", ":material/dark_mode:", "swing"),
+            P(page(ip.render_entry_timer), "Entry Timer", ":material/timer:", "entry-timer"),
+            P(fgview, "FG VIEW pro", ":material/insights:", "fgview"),
+            P(page(ip.render_burnout), "Burn Out", ":material/local_fire_department:", "burn-out"),
         ],
         "Escanear": [
-            P(page(ip.render_scanner), "Chart Scanner", "📡", "scanner"),
-            P(page(ip.render_news_monitor), "News Monitor", "📰", "news"),
-            P(page(ip.render_alerts), "Alertas", "🔔", "alertas"),
+            P(page(ip.render_scanner), "Chart Scanner", ":material/radar:", "scanner"),
+            P(page(ip.render_news_monitor), "News Monitor", ":material/newspaper:", "news"),
+            P(page(ip.render_alerts), "Alertas", ":material/notifications:", "alertas"),
         ],
         "Riesgo y capital": [
-            P(page(ip.render_risk_manager), "Risk Manager", "🛡️", "riesgo"),
-            P(page(ip.render_budget), "Budget Manager", "💰", "budget"),
-            P(page(ip.render_executor), "Order Executor", "🤖", "executor"),
-            P(lambda: render_journal(svc().journal), "Bitácora", "📒", "bitacora"),
-            P(page(ip.render_review), "Revisor de historial", "🔍", "revisor"),
+            P(page(ip.render_risk_manager), "Risk Manager", ":material/shield:", "riesgo"),
+            P(page(ip.render_budget), "Budget Manager", ":material/account_balance_wallet:", "budget"),
+            P(page(ip.render_executor), "Order Executor", ":material/send:", "executor"),
+            P(lambda: render_journal(svc().journal), "Bitácora", ":material/menu_book:", "bitacora"),
+            P(page(ip.render_review), "Revisor de historial", ":material/manage_search:", "revisor"),
         ],
         "Contexto": [
-            P(page(ip.render_fundamentals), "Fundamentales cripto", "💎", "fundamentales"),
-            P(page(ip.render_smart_money), "Smart Money", "🐋", "smart-money"),
+            P(page(ip.render_fundamentals), "Fundamentales cripto", ":material/diamond:", "fundamentales"),
+            P(page(ip.render_smart_money), "Smart Money", ":material/monitoring:", "smart-money"),
         ],
         "Herramientas": [
-            P(lambda: render_ladder(svc()), "Crecimiento exponencial", "📈", "exponencial"),
-            P(lambda: render_simulator(None), "Simulador", "🧮", "simulador"),
+            P(lambda: render_ladder(svc()), "Crecimiento exponencial", ":material/trending_up:", "exponencial"),
+            P(lambda: render_simulator(None), "Simulador", ":material/calculate:", "simulador"),
         ],
     }
 
 
+def nav_counts() -> dict[str, str]:
+    """Contadores en vivo para el menú."""
+    out: dict[str, str] = {}
+    try:
+        svc = get_services()
+        n_open = len(svc.positions.all())
+        if n_open:
+            out["executor"] = f"{n_open} abiertas"
+        n_alerts = len(svc.alerts.rules())
+        if n_alerts:
+            out["alertas"] = f"{n_alerts} activas"
+        today = svc.journal.today() if svc.journal else []
+        if today:
+            out["bitacora"] = f"{len(today)} hoy"
+        if svc.autopilot.state()["enabled"]:
+            out["desk"] = "🤖 piloto ON"
+        dec = st.session_state.get("dk_last")
+        if dec is not None and "desk" not in out:
+            out["desk"] = "✅" if dec.approved else "🎲" if dec.operable else "⛔"
+    except Exception:  # noqa: BLE001
+        pass
+    return out
+
+
 def main() -> None:
     _apply_query_params()
-    req, layers, auto = sidebar()
-    st.navigation(build_pages(req, layers, auto), position="sidebar", expanded=True).run()
+    req, layers, auto, nav_box = sidebar()
+    pages = build_pages(req, layers, auto)
+    pg = st.navigation(pages, position="hidden")
+    with nav_box:
+        sidebar_ui.render_nav(pages, nav_counts(), pg.url_path)
+    pg.run()
 
 
 main()

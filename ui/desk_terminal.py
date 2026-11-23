@@ -79,7 +79,7 @@ def build_payload(svc, dec, ranked=None, capital: float = 1000.0) -> dict:
         "hot": {"name": hot["name"], "now": hot["now"]} if hot else None,
         "now": datetime.now(timezone.utc).isoformat(),
         "symbol": dec.symbol if dec else "—", "direction": (dec.direction or "") if dec else "",
-        "verdict": ("approved" if dec and dec.approved else "operable" if dec and dec.operable
+        "verdict": ("approved" if dec and dec.approved else ("operable" if dec.verdict == "ESPERAR" else "blocked") if dec and dec.operable
                     else "blocked" if dec and dec.blocked_by else "idle"),
         "summary": dec.summary() if dec else "Pulsa «Correr la mesa»: los 7 agentes analizarán el mercado.",
         "agents": agents, "trace": dec.trace() if dec else [],
@@ -220,7 +220,7 @@ const P=D.pnl, act=D.agents.filter(a=>a.status!=='idle'), holder=act.length?act[
 $('tBal').textContent=usd(P.balance); $('tRisk').textContent=D.risk_pct!=null?D.risk_pct.toFixed(2)+'%':'—'; $('tSims').textContent=D.tm?fm(D.tm.sims,0):'—';
 $('status').innerHTML=['HOLDER <b style="color:'+COL[holder]+'">'+holder+'</b>','TRASPASOS '+act.length+'/7',
  'MODELO P(TP1) '+(D.prob!=null?D.prob+'%':'—')+' VS BASE '+(D.tm&&D.tm.prior!=null?D.tm.prior+'%':'—'),'VENTAJA '+(D.edge_r!=null?(D.edge_r>=0?'+':'')+D.edge_r.toFixed(2)+'R':'—'),
- 'POSICIONES ABIERTAS '+D.open,'PILOTO '+(D.pilot.on?'ON · '+(D.pilot.mode==='live'?'REAL':'PAPEL'):'OFF'),'APROBACIÓN HUMANA EN REAL','VEREDICTO '+(D.verdict==='approved'?'<b style="color:#3DDC97">APROBADA</b>':D.verdict==='operable'?'<b style="color:#F5A623">🎲 OPERABLE · NO RECOMENDADA</b>':D.verdict==='blocked'?'<b style="color:#FF4D6D">NO OPERAR</b>':'EN ESPERA')]
+ 'POSICIONES ABIERTAS '+D.open,'PILOTO '+(D.pilot.on?'ON · '+(D.pilot.mode==='live'?'REAL':'PAPEL'):'OFF'),'APROBACIÓN HUMANA EN REAL','VEREDICTO '+(D.verdict==='approved'?'<b style="color:#3DDC97">✅ OPERAR</b>':D.verdict==='operable'?'<b style="color:#F5A623">⏸️ ESPERAR</b>':D.verdict==='blocked'?'<b style="color:#FF4D6D">NO OPERAR</b>':'EN ESPERA')]
  .map(x=>'<span style="margin:0 18px;color:#C9CED8">'+x+'</span>').join('<span style="color:#3a4150">◆</span>');
 const wire=(D.agents.filter(a=>a.status!=='idle').map(a=>'<span class="chip" style="background:'+rgba(a.color,.16)+';color:'+a.color+'">'+a.key+'</span><span style="color:#8C95A8">'+a.at+'</span> <span style="color:#C9CED8">'+esc(a.headline)+'</span>').join('   '))||'<span style="color:#8C95A8">La mesa espera. Corre la mesa para ver a los agentes trabajar.</span>';
 $('wire').innerHTML=wire+'   '+wire;

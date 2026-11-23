@@ -60,6 +60,7 @@ def render_desk(svc, req) -> None:
                     sym = "DEMO/USDT" if market == "demo" else f"{target}/USDT"
                     dec = svc.desk.run(sym, market, capital, req.exchange, direction)
             st.session_state["dk_last"] = dec
+            st.rerun()  # Para que la mini-mesa de la barra lateral muestre esta decisión al instante
         except Exception as exc:  # noqa: BLE001
             st.error(f"La mesa no pudo analizar: {exc}")
     dec = st.session_state.get("dk_last")
@@ -86,10 +87,10 @@ def render_desk(svc, req) -> None:
             for sym, sc, head in ranked[:15]:
                 st.caption(f"{sym} · {'⛔' if sc < 0 else f'{sc:.0f}/100'} · {head}")
     if dec is not None and dec.ticket is not None:
-        st.markdown("### 🎯 Orden de la mesa" + (" · 🎲 OPERABLE (NO RECOMENDADA)" if dec.operable else " · ✅ APROBADA"))
+        st.markdown(f"### 🎯 Lo más recomendado · {dec.verdict_icon} {dec.verdict} · P(TP1) {dec.probability or 0:.0f}%")
         if dec.operable:
             b = dec.blocked_by
-            st.warning(f"🎲 Esta operación NO está respaldada por la mesa: {b.agent} la objetó ({b.headline[:140]}). "
+            (st.warning if dec.verdict == "ESPERAR" else st.error)(f"{dec.verdict_icon} {dec.verdict}: la mesa no la respalda del todo: {b.agent} la objetó ({b.headline[:140]}). "
                        f"Va con riesgo reducido ({dec.risk_pct:.2f}% del capital) y SL obligatorio. "
                        "Trátala como una apuesta: solo con dinero que aceptes perder.")
         st.markdown("  \n".join(dec.ticket.lines()))
@@ -118,6 +119,12 @@ def _autopilot(svc, req, market: str, capital: float) -> None:
                       index=1 if stt["mode"] == "live" else 0,
                       format_func={"paper": "📝 Papel", "live": "💵 Real"}.get, disabled=not (unlocked and live_enabled()))
     maxt = c[2].number_input("Máx. operaciones/día", 1, 30, int(stt["max_trades_day"]), key="ap_max")
+    lvl = st.radio("El piloto entra en", ["OPERAR", "ESPERAR"], horizontal=True, key="ap_lvl",
+                   index=1 if stt.get("min_level") == "ESPERAR" else 0,
+                   format_func={"OPERAR": "✅ Solo OPERAR (recomendado)", "ESPERAR": "⏸️ OPERAR y ESPERAR (riesgo reducido)"}.get,
+                   help="⛔ NO OPERAR nunca se ejecuta automáticamente.")
+    if lvl != stt.get("min_level", "OPERAR"):
+        stt = pilot.set(min_level=lvl)
     maxl = c[3].number_input("Pérdida diaria máx. %", 0.5, 10.0, float(stt["max_loss_pct"]), step=0.5, key="ap_loss")
     if (on, mode, maxt, maxl) != (stt["enabled"], stt["mode"], stt["max_trades_day"], stt["max_loss_pct"]):
         stt = pilot.set(enabled=on, mode=mode if (unlocked and live_enabled()) else "paper", max_trades_day=int(maxt),

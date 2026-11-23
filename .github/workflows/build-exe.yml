@@ -249,6 +249,11 @@ jobs:
           - **Windows**: `FGView-V2-Windows.zip` → descomprime y abre `FGView\FGView.exe`
           - **Mac Intel (macOS 12 Monterey o superior)**: `FGView-V2-macOS-Intel.dmg` → arrastra a Aplicaciones; la primera vez Control + clic → Abrir
 
+          **Novedades v4.6 · barra lateral profesional y veredicto de 3 niveles**
+          - 🧭 Barra lateral reorganizada: marca con reloj UTC, tarjeta de mercado con mini-gráfica, menú compacto con iconos de línea, contadores y página activa resaltada, mini-mesa de agentes y configuración agrupada.
+          - 🚦 Cada análisis da SIEMPRE un veredicto ✅ OPERAR / ⏸️ ESPERAR / ⛔ NO OPERAR, junto con lo más recomendado y su probabilidad.
+          - 🤖 El piloto puede entrar solo en OPERAR (recomendado) o también en ESPERAR con riesgo reducido; NO OPERAR nunca se ejecuta solo. Enfocado en Binance Futures.
+
           **Novedades v4.5 · personajes y modo operable**
           - 👾 **Personajes propios** para los 7 agentes (explorador de un ojo, búho, mago, aleta, robot cubo, cangrejo y fantasma guardián) con ojos que parpadean y miran, y expresiones: sonríe al aprobar, ✕ y ceño al bloquear, dormido en espera.
           - 🧭 Los agentes **recorren su gráfica mientras piensan**: el Spotter sigue las velas, el Edge sube y baja por el libro, el Taker se asoma al spread, el Prior camina sobre la cresta, el Kelly sobre la curva de capital, el Pricer suelta las bolitas del Galton y el Closer baja por la traza; con haz de escaneo y burbuja de pensamiento.

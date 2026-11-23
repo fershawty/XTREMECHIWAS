@@ -119,6 +119,22 @@ class DeskDecision:
         return bool(self.results) and all(r.status != "block" for r in self.results) and self.ticket is not None
 
     @property
+    def verdict(self) -> str:
+        """OPERAR (la mesa aprueba) · ESPERAR (objeciones leves) · NO OPERAR (objeciones fuertes). Siempre hay plan."""
+        if self.approved:
+            return "OPERAR"
+        if self.ticket is None:
+            return "NO OPERAR"
+        hard = (self.edge_r is not None and self.edge_r < -0.02) or (self.probability or 0) < 50 or any(
+            r.agent == "EDGE" and r.status == "block" and "⛔" in r.headline and "ventaja" not in r.headline.split("⛔")[-1]
+            for r in self.results)
+        return "NO OPERAR" if hard else "ESPERAR"
+
+    @property
+    def verdict_icon(self) -> str:
+        return {"OPERAR": "✅", "ESPERAR": "⏸️", "NO OPERAR": "⛔"}[self.verdict]
+
+    @property
     def operable(self) -> bool:
         """Hay orden lista aunque algún agente la objetara (🎲 modo operable, riesgo reducido)."""
         return self.ticket is not None and not self.approved
@@ -136,9 +152,9 @@ class DeskDecision:
                     f"{self.edge_r or 0:+.2f}R · riesgo {self.risk_pct or 0:.2f}% del capital.")
         b = self.blocked_by
         if self.operable:
-            return (f"🎲 OPERABLE (NO RECOMENDADA) {self.direction} {self.symbol}: P(TP1) {self.probability or 0:.0f}% · "
-                    f"ventaja {self.edge_r or 0:+.2f}R · riesgo reducido {self.risk_pct or 0:.2f}% · objetó {b.agent}: "
-                    f"{b.headline[:90]}")
+            return (f"{self.verdict_icon} {self.verdict} · lo más recomendado: {self.direction} {self.symbol} · P(TP1) "
+                    f"{self.probability or 0:.0f}% · ventaja {self.edge_r or 0:+.2f}R · riesgo reducido {self.risk_pct or 0:.2f}% · "
+                    f"objetó {b.agent}: {b.headline[:90]}")
         return f"⛔ La mesa NO opera {self.symbol}: {b.agent} bloqueó → {b.headline}" if b else "Sin decisión."
 
 
@@ -258,6 +274,7 @@ class Desk:
         self.s, self.cfg = services, config
         self.min_prob, self.min_edge_r, self.kelly_fraction = min_prob, min_edge_r, kelly_fraction
         self.min_prior, self.operable = min_prior, operable
+        self.send_wait = False  # El piloto también entra en ESPERAR (riesgo reducido) si el usuario lo activa
         self.rotation = SignalRotation(services.filters)
         self.calibrator = Calibrator(services.time_machine, config)
 
@@ -484,7 +501,7 @@ class Desk:
         objected = any(r.status == "block" for r in dec.results)
         sent_txt = ("🎲 OPERABLE · NO RECOMENDADA: solo tú decides" if objected
                     else "orden lista: esperando tu confirmación")
-        if send_mode in ("paper", "live") and not objected:  # El piloto solo envía lo APROBADO
+        if send_mode in ("paper", "live") and (not objected or (self.send_wait and not self._hard_objection(dec))):
             out = s.executor.submit(ticket, confirmed=True, mode=send_mode)
             dec.sent = out.get("status") == "filled"
             sent_txt = (f"ENVIADA ({'papel' if send_mode == 'paper' else 'REAL'})" if dec.sent
@@ -494,6 +511,10 @@ class Desk:
                                        f"· {sent_txt}", ms=(time.perf_counter() - t0) * 1000))
         dec.results.append(self.close_agent())
         return dec
+
+    @staticmethod
+    def _hard_objection(dec: DeskDecision) -> bool:
+        return (dec.edge_r is not None and dec.edge_r < -0.02) or (dec.probability or 0) < 50
 
     def close_agent(self) -> AgentResult:
         t0 = time.perf_counter()
@@ -552,6 +573,7 @@ class Autopilot:
     def state(self) -> dict:
         data = (self.db.get_state(self.KEY, {}) if self.db is not None else self._mem) or {}
         return {"enabled": False, "mode": "paper", "max_trades_day": 6, "max_loss_pct": 3.0, "tiers": ["A", "B"],
+                "min_level": "OPERAR",
                 "last_run": 0.0, "events": [], **data}
 
     def save(self, st: dict) -> None:
@@ -622,6 +644,7 @@ class Autopilot:
                 self._log(f"🔒 Modo real bloqueado ({why}). Sigo en papel.")
                 mode = "paper"
         coins = [c for t in s.tiers.tiers if t.key in st["tiers"] for c in t.coins]
+        self.desk.send_wait = st.get("min_level") == "ESPERAR"
         dec, _ = self.desk.scan(coins, market, capital, exchange, send_mode=mode)
         if dec is not None and dec.sent:
             self._log(f"🎯 {dec.summary()} → enviada en {'papel' if mode == 'paper' else 'REAL'}.")

@@ -927,7 +927,7 @@ def test_desk_operable_mode_gives_trade_but_never_autosends(fgdb):
     assert not dec.approved and dec.operable and dec.ticket is not None
     assert dec.risk_pct <= fgdb.desk.OPERABLE_RISK and dec.ticket.stop_problem() is None
     assert not dec.sent and not fgdb.positions.all()  # El piloto NO abre operaciones no recomendadas
-    assert "OPERABLE" in dec.summary()
+    assert "lo más recomendado" in dec.summary() and dec.verdict in ("ESPERAR", "NO OPERAR")
     strict = fgdb.desk.run("DEMO/USDT", "demo", 1000, operable=False)
     assert strict.ticket is None and strict.blocked_by is not None
 
@@ -938,3 +938,13 @@ def test_critters_js_is_embedded():
     assert "function drawCritter" in CRITTERS_JS
     for key in ("SPOTTER", "PRIOR", "PRICER", "EDGE", "KELLY", "TAKER"):
         assert f"key==='{key}'" in CRITTERS_JS
+
+
+def test_three_level_verdict_and_pilot_levels(fgdb):
+    ok = _desk_forced(fgdb).run("DEMO/USDT", "demo", 1000)
+    assert ok.verdict == "OPERAR"
+    bad = _desk_forced(fgdb, ev=-1.0).run("DEMO/USDT", "demo", 1000)
+    assert bad.verdict == "NO OPERAR" and bad.ticket is not None and bad.probability is not None
+    fgdb.desk.send_wait = True
+    nope = _desk_forced(fgdb, ev=-1.0).run("DEMO/USDT", "demo", 1000, send_mode="paper")
+    assert not nope.sent  # NO OPERAR nunca se envía solo

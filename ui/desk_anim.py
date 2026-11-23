@@ -207,7 +207,7 @@ function frame(now){
   X.shadowColor=vc; X.shadowBlur=40; X.fillStyle=sph; X.beginPath(); X.arc(cx,cy,Rc,0,6.283); X.fill(); X.shadowBlur=0;
   X.fillStyle='rgba(255,255,255,.55)'; X.beginPath(); X.ellipse(cx-Rc*.3,cy-Rc*.45,Rc*.35,Rc*.16,-.5,0,6.283); X.fill();
   if(img.complete){X.save(); X.beginPath(); X.arc(cx,cy,Rc*.78,0,6.283); X.clip(); X.drawImage(img,cx-Rc*.78,cy-Rc*.78,Rc*1.56,Rc*1.56); X.restore();}
-  if(done){const lab=(v==='approved'?'◆ ORDEN APROBADA ◆':v==='operable'?'🎲 OPERABLE · NO RECOMENDADA':v==='blocked'?'✕ NO OPERAR':'EN ESPERA')+
+  if(done){const lab=(v==='approved'?'✅ OPERAR':v==='operable'?'⏸️ ESPERAR':v==='blocked'?'⛔ NO OPERAR':'EN ESPERA')+
       (D.prob!=null?'   '+(D.direction||'')+' '+D.symbol+' · P(TP1) '+D.prob+'%':'');
     X.font='700 10.5px '+FONT; const tw=X.measureText(lab).width+28; X.fillStyle='rgba(5,7,11,.85)'; X.strokeStyle=rgba(vc,.6);
     X.beginPath(); X.roundRect(cx-tw/2,26,tw,22,11); X.fill(); X.stroke(); X.fillStyle=vc; X.textAlign='center'; X.textBaseline='middle'; X.fillText(lab,cx,37);
@@ -235,7 +235,7 @@ window.addEventListener('resize',layout); layout(); requestAnimationFrame(frame)
 
 def synapse_html(decision, logo_svg: str, height: int = 600) -> str:
     agents = _agents_payload(decision)
-    verdict = ("approved" if decision and decision.approved else "operable" if decision and decision.operable
+    verdict = ("approved" if decision and decision.approved else ("operable" if decision.verdict == "ESPERAR" else "blocked") if decision and decision.operable
                else "blocked" if decision and decision.blocked_by else "idle")
     summary = decision.summary() if decision else "Pulsa «Correr la mesa» para que los agentes analicen el mercado."
     weights = [round(r.get("weight", 1.0), 3) for r in (decision.rotation if decision else [])] or [1.0] * 6
