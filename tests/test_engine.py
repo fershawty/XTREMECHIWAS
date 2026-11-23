@@ -507,7 +507,7 @@ def test_native_ladder_parity(fg):
 
 
 # -----------------------------------------------------------------------------
-# FG ISRAEL VIEW Build 1: módulos 7–16 + BURN OUT
+# Módulos 7–16 + BURN OUT
 # -----------------------------------------------------------------------------
 @pytest.fixture()
 def fgdb(tmp_path):
@@ -802,3 +802,104 @@ def test_squeeze_uses_long_short_ratio(fg):
     calm = fg.recommender.squeeze.analyze(df, "SHORT")
     crowded = fg.recommender.squeeze.analyze(df, "SHORT", positioning=Positioning("SOL", 38, 62))
     assert crowded.points == calm.points + 2 and any("cuentas en corto" in r for r in crowded.reasons)
+
+
+# -----------------------------------------------------------------------------
+# v4.2 FG DESK: 7 agentes, calibración, Kelly, rotación y piloto automático
+# -----------------------------------------------------------------------------
+def _desk_forced(fgdb, p_tp1=70.0, ev=2.0, kelly=0.08):
+    """Mesa con Spotter/Prior aprobando y un Time Machine favorable (para probar el resto de la cadena)."""
+    from engine.fgview.desk import AgentResult
+    from engine.fgview.timemachine import TimeMachineResult
+
+    desk = fgdb.desk
+    desk.min_prior = 0
+    orig = desk.spot
+    desk.spot = lambda *a, **k: (lambda r: (AgentResult("SPOTTER", "pass", r[0].headline),) + r[1:])(orig(*a, **k))
+    tm = TimeMachineResult(sims=100_000, p_tp1=p_tp1, p_tp2=40, p_tp3=20, p_sl=100 - p_tp1, p_time=0, p_liq=0, ev=ev,
+                           var95=8, eligible=5000, regime_band=20, bars="5m", days=90, backend="test",
+                           kelly=kelly, ev_r=ev / 8)
+    fgdb.time_machine.run = lambda *a, **k: tm
+    desk.calibrator.build = lambda *a, **k: None
+    return desk
+
+
+def test_desk_full_chain_approves_and_sizes_with_kelly(fgdb):
+    desk = _desk_forced(fgdb)
+    dec = desk.run("DEMO/USDT", "demo", 1000, send_mode="paper")
+    agents = [r.agent for r in dec.results]
+    assert agents == ["SPOTTER", "PRIOR", "PRICER", "EDGE", "KELLY", "TAKER", "CLOSER"]
+    assert dec.approved and dec.sent and fgdb.positions.all()
+    table, _ = fgdb.planner.budget.rule(1000)
+    assert dec.risk_pct == pytest.approx(min(table, 0.08 * 0.25 * 100))  # ¼ Kelly, nunca más que la tabla
+    assert dec.ticket.post_only and dec.ticket.stop_problem() is None and "APRUEBA" in dec.summary()
+    assert dec.fan and len(dec.fan["paths"]) == 70 and len(dec.trace()) == 7
+
+
+def test_desk_blocks_on_negative_edge_and_low_probability(fgdb):
+    dec = _desk_forced(fgdb, ev=-1.0).run("DEMO/USDT", "demo", 1000)
+    assert not dec.approved and dec.blocked_by.agent == "EDGE" and "negativa" in dec.blocked_by.headline
+    dec = _desk_forced(fgdb, p_tp1=30.0).run("DEMO/USDT", "demo", 1000)
+    assert dec.blocked_by.agent == "PRICER"
+
+
+def test_calibrator_adjusts_towards_reality():
+    from engine.fgview.desk import Calibrator
+
+    calib = {"bins": [{"range": "60–70%", "pred": 65.0, "real": 50.0, "n": 80}]}
+    p = Calibrator.adjust(65.0, calib)
+    assert 50 < p < 55  # Muchos casos: se acerca mucho a lo observado
+    few = {"bins": [{"range": "60–70%", "pred": 65.0, "real": 50.0, "n": 4}]}
+    assert 60 < Calibrator.adjust(65.0, few) < 65  # Pocos casos: corrige con prudencia
+    assert Calibrator.adjust(45.0, calib) == 45.0
+
+
+def test_calibrator_walk_forward_has_no_lookahead(fg):
+    from engine.fgview.desk import Calibrator
+
+    df, _ = fg.history.get("DEMO/USDT", "demo", "5m", 30)
+    plan = fg.planner.plan(1000, "BTC", "LONG", float(df["close"].iloc[-1]))
+    res = Calibrator(fg.time_machine, points=12, sims=1500).build(plan, df, 5, ("t",))
+    assert res["n"] >= 6 and res["brier"] is not None and 0 <= res["brier"] <= 1
+    assert all(0 <= b["real"] <= 100 for b in res["bins"])
+
+
+def test_time_machine_reports_kelly(fg):
+    df, _ = fg.history.get("DEMO/USDT", "demo", "5m", 30)
+    plan = fg.planner.plan(1000, "BTC", "LONG", float(df["close"].iloc[-1]))
+    r = fg.time_machine.run(plan, df, 5, sims=4000)
+    assert r.kelly >= 0 and r.ev_r == pytest.approx(r.ev / abs(plan.sl_pnl), rel=1e-6)
+    fan = fg.time_machine.fan(plan, df, 5, n=10)
+    assert len(fan["paths"]) == 10 and set(fan["outcomes"]) <= {"sl", "tp1", "tp2", "tp3", "tiempo"}
+
+
+def test_signal_rotation_and_autopilot_gates(fgdb):
+    snap = fgdb.loader.load("DEMO/USDT", "demo")
+    rot = fgdb.desk.rotation.measure(snap.df5, snap.df1h, "LONG")
+    assert len(rot) == 6 and all(0.3 <= r["weight"] <= 1.7 for r in rot)
+    pilot = fgdb.autopilot
+    assert pilot.tick(1000, "demo") is None  # Apagado: no hace nada
+    ok, why = pilot.live_unlocked()
+    assert not ok and "0/50" in why
+    _desk_forced(fgdb)
+    pilot.set(enabled=True, mode="live")  # Real pedido pero bloqueado -> opera en papel
+    dec = pilot.tick(1000, "demo", force=True)
+    assert dec is not None and dec.sent and fgdb.positions.all()[0]["mode"] == "papel"
+    assert any("bloqueado" in e["text"] for e in pilot.state()["events"])
+    pilot.kill()
+    assert not pilot.state()["enabled"]
+
+
+def test_desk_panels_data_and_html(fgdb):
+    from ui import desk_anim as anim
+    from ui.components import _logo_svg
+
+    dec = _desk_forced(fgdb).run("DEMO/USDT", "demo", 1000)
+    assert dec.tape and len(dec.tape["c"]) == 80 and dec.tape["sd"] >= 0
+    names = {r["name"] for r in dec.radar}
+    assert {"Filtros", "Ponderado", "Anti-squeeze", "P(TP1)", "Ventaja"} <= names
+    assert all(0 <= r["value"] <= 100 for r in dec.radar)
+    for html in (anim.synapse_html(dec, _logo_svg()), anim.pipeline_html(dec), anim.tape_html(dec.tape),
+                 anim.radar_html(dec.radar), anim.livewire_html(dec), anim.fan_html(dec.fan, dec.tm),
+                 anim.trace_html(dec), anim.rotation_html(dec.rotation), anim.synapse_html(None, _logo_svg())):
+        assert "<" in html and "__DATA__" not in html and "__H__" not in html

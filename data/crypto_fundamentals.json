@@ -1,5 +1,5 @@
 {
-  "_ayuda": "Edita este archivo con datos de Tokenomist (desbloqueos), Farside (flujos de ETFs) o CryptoQuant (flujos de exchanges). Fechas en formato AAAA-MM-DD. pct_circulating = % del suministro circulante que se desbloquea. FG ISRAEL VIEW marca ⚠️ si supera el 2% en los próximos 7 días.",
+  "_ayuda": "Edita este archivo con datos de Tokenomist (desbloqueos), Farside (flujos de ETFs) o CryptoQuant (flujos de exchanges). Fechas en formato AAAA-MM-DD. pct_circulating = % del suministro circulante que se desbloquea. FG VIEW marca ⚠️ si supera el 2% en los próximos 7 días.",
   "unlocks": [
     {"coin": "SUI", "date": "2026-12-01", "pct_circulating": 1.3, "note": "Ejemplo: desbloqueo mensual (edítalo con datos reales)"}
   ],

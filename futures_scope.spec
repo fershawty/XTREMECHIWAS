@@ -2,15 +2,15 @@
 """
 futures_scope.spec
 ==================
-Receta de PyInstaller para construir FGIsraelView.exe (carpeta autocontenida).
+Receta de PyInstaller para construir FGView.exe (carpeta autocontenida).
 
     pip install -r requirements.txt pyinstaller==6.22.3
     pyinstaller futures_scope.spec --noconfirm
 
 Resultado:
-* Windows: dist/FGIsraelView/FGIsraelView.exe (+ carpeta _internal, cópiala completa).
+* Windows: dist/FGView/FGView.exe (+ carpeta _internal, cópiala completa).
   Tu .env y tus datos se crean junto al .exe en el primer arranque.
-* macOS:   dist/FGIsraelView.app (macOS 12 Monterey o superior).
+* macOS:   dist/FGView.app (macOS 12 Monterey o superior).
   Tu .env y tus datos se crean en ~/Library/Application Support/FGView.
 """
 import sys
@@ -75,6 +75,7 @@ datas += [
     (".env.example", "."),
     ("assets/icon.png", "assets"),
     ("assets/logo.png", "assets"),
+    ("assets/logo.svg", "assets"),
 ]
 
 a = Analysis(
@@ -92,27 +93,27 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="FGIsraelView",
+    name="FGView",
     console=False,  # Sin ventana negra de consola: se usa la ventana de arranque
     icon="assets/icon.icns" if sys.platform == "darwin" else "assets/icon.ico",
     disable_windowed_traceback=False,
 )
-coll = COLLECT(exe, a.binaries, a.datas, name="FGIsraelView")
+coll = COLLECT(exe, a.binaries, a.datas, name="FGView")
 
-# macOS: empaquetar como FGIsraelView.app (compatible desde macOS 12 Monterey)
+# macOS: empaquetar como FGView.app (compatible desde macOS 12 Monterey)
 if sys.platform == "darwin":
     app = BUNDLE(
         coll,
-        name="FGIsraelView.app",
+        name="FGView.app",
         icon="assets/icon.icns",
         bundle_identifier="com.fgview.app",
         info_plist={
-            "CFBundleName": "FGIsraelView",
-            "CFBundleDisplayName": "FG ISRAEL VIEW",
-            "CFBundleShortVersionString": "4.1.0",
-            "CFBundleVersion": "4.1.0",
+            "CFBundleName": "FGView",
+            "CFBundleDisplayName": "FG VIEW",
+            "CFBundleShortVersionString": "4.2.0",
+            "CFBundleVersion": "4.2.0",
             "LSMinimumSystemVersion": "12.0",
             "NSHighResolutionCapable": True,
-            "NSHumanReadableCopyright": "FG ISRAEL VIEW BUILD 1 · BY GUS X FER X ALFREDOBONUS",
+            "NSHumanReadableCopyright": "FG VIEW V2 · BY GUS X FER X ALFREDOBONUS",
         },
     )

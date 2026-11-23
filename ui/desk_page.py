@@ -1,0 +1,158 @@
+"""
+ui/desk_page.py
+===============
+Página 🧠 FG DESK: la mesa de 7 agentes para operaciones cortas en futuros, con sus
+animaciones (sinapsis, abanico de futuros, traza, rotación de señales y calibración) y el
+🤖 piloto automático (papel primero; el modo real solo se desbloquea con resultados).
+"""
+
+from __future__ import annotations
+
+import streamlit as st
+import streamlit.components.v1 as components
+
+from engine.config import SETTINGS
+from engine.fgview.executor import live_enabled
+from engine.position_simulator import fmt_usd
+from ui import desk_anim as anim
+from ui.components import _logo_svg
+from ui.mode import beginner, guide
+
+
+def _capital() -> float:
+    return float(st.session_state.get("equity", SETTINGS.account_equity))
+
+
+def _kpis(svc) -> None:
+    pilot = svc.autopilot
+    ps = pilot.paper_stats()
+    bal = svc.budget.status().balance if svc.budget and svc.budget.state().get("start") else _capital()
+    net_c = "#3DDC97" if ps["net"] >= 0 else "#FF4D6D"
+    pf = "∞" if ps["pf"] == float("inf") else f"{ps['pf']:.2f}"
+    st_ = pilot.state()
+    components.html(anim.kpi_html([
+        ("SALDO", fmt_usd(bal), "#ECE8DC"),
+        ("PNL MESA (PAPEL)", fmt_usd(ps["net"], True), net_c),
+        ("OPERACIONES", str(ps["trades"]), "#ECE8DC"),
+        ("WIN RATE", f"{ps['win_rate']:.0f}%", "#5AC8FA"),
+        ("PROFIT FACTOR", pf, "#B388FF"),
+        ("MAX DD", f"{ps['max_dd_pct']:.1f}%", "#F5A623"),
+        ("PILOTO", ("ON · " + ("REAL" if st_["mode"] == "live" else "PAPEL")) if st_["enabled"] else "OFF",
+         "#3DDC97" if st_["enabled"] else "#5D6577"),
+    ]), height=74)
+
+
+def render_desk(svc, req) -> None:
+    _kpis(svc)
+    guide("Siete agentes analizan cada operación en cadena, como una mesa de traders profesionales. Si UNO dice que no, "
+          "no se opera. La animación te muestra en vivo qué decidió cada uno.",
+          ["Elige la cripto (o «Escanear todas») y pulsa «▶ Correr la mesa».",
+           "Mira la sinapsis: verde = aprueba, rojo = bloquea, dorado en el centro = orden aprobada.",
+           "Si la mesa aprueba, envía la orden al Order Executor o deja que el 🤖 piloto la abra en papel."],
+          "La calibración compara lo que la mesa predijo con lo que pasó de verdad: así sabes cuánto confiar en sus números.")
+    market = "demo" if req.market == "demo" else "crypto"
+    coins = [c for t in svc.tiers.tiers if t.key in ("A", "B") for c in t.coins]
+    c1, c2, c3 = st.columns([1.5, 1, 1], vertical_alignment="bottom")
+    if market == "demo":
+        target = c1.selectbox("Cripto", ["DEMO"], key="dk_coin")
+    else:
+        base = req.symbol.split("/")[0].upper()
+        opts = ["🔎 Escanear todas"] + coins
+        target = c1.selectbox("Cripto", opts, index=opts.index(base) if base in opts else 0, key="dk_coin",
+                              format_func=lambda c: c if c.startswith("🔎") else f"{c} · {svc.tiers.label(c)}")
+    direction = c2.selectbox("Dirección", ["Auto", "LONG", "SHORT"], key="dk_dir")
+    go = c3.button("▶ Correr la mesa", type="primary", key="dk_go", width="stretch")
+    capital = _capital()
+    if go:
+        try:
+            with st.spinner("Los agentes están analizando: Spotter → Prior → Pricer (100,000 caminos + calibración) → "
+                            "Edge → Kelly → Taker…"):
+                if target.startswith("🔎"):
+                    dec, ranked = svc.desk.scan(coins, market, capital, req.exchange)
+                    st.session_state["dk_ranked"] = ranked
+                else:
+                    sym = "DEMO/USDT" if market == "demo" else f"{target}/USDT"
+                    dec = svc.desk.run(sym, market, capital, req.exchange, direction)
+            st.session_state["dk_last"] = dec
+        except Exception as exc:  # noqa: BLE001
+            st.error(f"La mesa no pudo analizar: {exc}")
+    dec = st.session_state.get("dk_last")
+    components.html(anim.livewire_html(dec), height=36)
+    components.html(anim.synapse_html(dec, _logo_svg()), height=608)
+    components.html(anim.pipeline_html(dec), height=98)
+    if dec is not None and beginner():
+        st.info(dec.summary())
+    a, b = st.columns([1.55, 1])
+    with a:
+        components.html(anim.tape_html(dec.tape if dec else None), height=338)
+    with b:
+        components.html(anim.radar_html(dec.radar if dec else None), height=338)
+    a, b = st.columns([1.55, 1])
+    with a:
+        components.html(anim.fan_html(dec.fan if dec else None, dec.tm if dec else None), height=338)
+    with b:
+        components.html(anim.trace_html(dec), height=338)
+    a, b = st.columns(2)
+    with a:
+        components.html(anim.rotation_html(dec.rotation if dec else []), height=308)
+    with b:
+        components.html(anim.calibration_html(dec.calibration if dec else None), height=308)
+    ranked = st.session_state.get("dk_ranked")
+    if ranked and not beginner():
+        with st.expander("🔎 Ranking del Spotter (escaneo)"):
+            for sym, sc, head in ranked[:15]:
+                st.caption(f"{sym} · {'⛔' if sc < 0 else f'{sc:.0f}/100'} · {head}")
+    if dec is not None and dec.approved and dec.ticket is not None:
+        st.markdown("### 🎯 Orden de la mesa")
+        st.markdown("  \n".join(dec.ticket.lines()))
+        x, y = st.columns(2)
+        if x.button("🧾 Llevar al Order Executor", key="dk_to_ex"):
+            st.session_state["ex_ticket"] = (dec.ticket, None)
+            st.success("Lista en «Riesgo y capital → Order Executor» para que la confirmes.")
+        if y.button("📝 Abrir en PAPEL ahora", key="dk_paper"):
+            out = svc.executor.submit(dec.ticket, confirmed=True, mode="paper")
+            st.success("Abierta en papel.") if out.get("status") == "filled" else st.error(
+                (out.get("problems") or [out.get("message")])[0])
+    _autopilot(svc, req, market, capital)
+
+
+def _autopilot(svc, req, market: str, capital: float) -> None:
+    st.markdown("### 🤖 Piloto automático de la mesa")
+    pilot = svc.autopilot
+    stt = pilot.state()
+    guide("El piloto corre la mesa cada minuto y, si los 7 agentes aprueban, abre la operación SOLO. Empieza en PAPEL. "
+          "El modo real se desbloquea cuando el papel demuestra resultados (50 operaciones, profit factor ≥ 1.2, "
+          "drawdown ≤ 10%) y además tú lo activas.")
+    unlocked, why = pilot.live_unlocked()
+    c = st.columns([1, 1.2, 1, 1])
+    on = c[0].toggle("Piloto encendido", value=stt["enabled"], key="ap_on")
+    mode = c[1].radio("Modo", ["paper", "live"], horizontal=True, key="ap_mode",
+                      index=1 if stt["mode"] == "live" else 0,
+                      format_func={"paper": "📝 Papel", "live": "💵 Real"}.get, disabled=not (unlocked and live_enabled()))
+    maxt = c[2].number_input("Máx. operaciones/día", 1, 30, int(stt["max_trades_day"]), key="ap_max")
+    maxl = c[3].number_input("Pérdida diaria máx. %", 0.5, 10.0, float(stt["max_loss_pct"]), step=0.5, key="ap_loss")
+    if (on, mode, maxt, maxl) != (stt["enabled"], stt["mode"], stt["max_trades_day"], stt["max_loss_pct"]):
+        stt = pilot.set(enabled=on, mode=mode if (unlocked and live_enabled()) else "paper", max_trades_day=int(maxt),
+                        max_loss_pct=float(maxl))
+    st.caption(("🔓 Modo real desbloqueado. " if unlocked else "🔒 Modo real bloqueado. ") + why
+               + ("" if live_enabled() else " · Además hace falta LIVE_TRADING_ENABLED=true en .env."))
+    if st.button("⛔ APAGAR PILOTO YA", key="ap_kill", type="secondary"):
+        pilot.kill()
+        st.rerun()
+
+    def loop() -> None:
+        if pilot.state()["enabled"]:
+            try:
+                dec = pilot.tick(capital, market, req.exchange)
+                if dec is not None:
+                    st.session_state["dk_last"] = dec
+            except Exception as exc:  # noqa: BLE001
+                st.caption(f"Piloto: {exc}")
+        ev = pilot.state()["events"][-12:]
+        if ev:
+            st.markdown("  \n".join(f"`{e['at']}` {e['text']}" for e in reversed(ev)))
+        else:
+            st.caption("Sin actividad del piloto todavía.")
+
+    st.fragment(loop, run_every=30 if stt["enabled"] else None)()
+    st.caption("Para que el piloto siga sin la app abierta: `python -m engine.fgview.desk` en una terminal.")

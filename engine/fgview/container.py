@@ -56,7 +56,7 @@ class FGServices:
     advisor: EasyModeAdvisor
     backtester: RecommenderBacktester
     ladder: LadderPlanner
-    # --- FG ISRAEL VIEW Build 1 (módulos 7–16 + BURN OUT) ---
+    # --- Módulos 7–16 + BURN OUT ---
     history: HistoryStore | None = None
     time_machine: TimeMachine | None = None
     scanner: ChartScanner | None = None
@@ -72,6 +72,8 @@ class FGServices:
     burnout: BurnOutStrategy | None = None
     swing: SwingPlanner | None = None
     reviewer: HistoryReviewer | None = None
+    desk: object | None = None  # FG DESK (6 agentes)
+    autopilot: object | None = None  # Piloto automático de la mesa
     extras: dict = field(default_factory=dict)
 
     @classmethod
@@ -98,7 +100,7 @@ class FGServices:
         alerts = PriceAlerts(feeder, positions, db)
         alerts.on_squeeze = executor.shield  # Escudo anti-squeeze automático
         alerts.on_tick = executor.trail  # Trailing stop en cada revisión
-        return cls(config, tiers, loader, filters, planner, manager, stats, journal, recommender,
+        inst = cls(config, tiers, loader, filters, planner, manager, stats, journal, recommender,
                    EasyModeAdvisor(recommender, manager, config), RecommenderBacktester(filters, planner, manager, config),
                    LadderPlanner(planner, config),
                    history=HistoryStore(feeder), time_machine=TimeMachine(),
@@ -109,3 +111,8 @@ class FGServices:
                    smart_money=SmartMoneyTracker(), burnout=burnout,
                    swing=SwingPlanner(feeder, planner, config, recommender.positioning),
                    reviewer=HistoryReviewer(tiers))
+        from engine.fgview.desk import Autopilot, Desk  # La mesa usa todos los servicios: se crea al final
+
+        inst.desk = Desk(inst, config)
+        inst.autopilot = Autopilot(inst.desk)
+        return inst

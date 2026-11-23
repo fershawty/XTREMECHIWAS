@@ -189,3 +189,88 @@ hr { border-color: var(--line) !important; margin: 0.6rem 0 !important; }
 h1, h2, h3, h4 { color: var(--gold-light); }
 [data-testid="stMetricValue"] { font-family: var(--mono); color: var(--text); }
 [data-testid="stProgress"] > div > div > div > div { background: var(--gold-grad) !important; }
+
+/* =============================================================================
+   FG VIEW V2 · tema «DESK» (terminal profesional: cristal oscuro, brillos y neón)
+   ============================================================================= */
+:root {
+  --bg: #05070B;
+  --panel: rgba(13, 16, 23, 0.86);
+  --panel-2: rgba(19, 23, 33, 0.92);
+  --line: rgba(148, 163, 184, 0.11);
+  --line-gold: rgba(212, 175, 55, 0.28);
+  --text: #ECE8DC;
+  --muted: #9BA3B4;
+  --faint: #5D6577;
+  --neon-green: #3DDC97; --neon-pink: #FF5C8A; --neon-violet: #B388FF;
+  --neon-cyan: #5AC8FA; --neon-amber: #F5A623;
+  --glow-gold: 0 0 0 1px rgba(212,175,55,.18), 0 8px 30px rgba(212,175,55,.08);
+  --glass: linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,0) 40%), var(--panel);
+}
+html, body, .stApp, [data-testid="stAppViewContainer"] {
+  background:
+    radial-gradient(1200px 600px at 8% -10%, rgba(212,175,55,.10), transparent 60%),
+    radial-gradient(900px 500px at 100% 110%, rgba(179,136,255,.07), transparent 60%),
+    linear-gradient(rgba(255,255,255,.018) 1px, transparent 1px) 0 0 / 100% 32px,
+    linear-gradient(90deg, rgba(255,255,255,.018) 1px, transparent 1px) 0 0 / 32px 100%,
+    var(--bg) !important;
+}
+@keyframes fgFadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes fgPulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+@keyframes fgShine { from { background-position: -200% 0; } to { background-position: 200% 0; } }
+
+/* Títulos de sección tipo terminal: ◆ TÍTULO */
+.stMarkdown h3 { font-family: var(--mono); font-size: .92rem !important; font-weight: 700; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--text); padding: .55rem 0 .45rem; margin: .6rem 0 .5rem;
+  border-bottom: 1px solid transparent;
+  border-image: linear-gradient(90deg, rgba(212,175,55,.65), rgba(212,175,55,0) 70%) 1; animation: fgFadeUp .35s ease both; }
+.stMarkdown h3::before { content: "◆ "; color: var(--gold); }
+.stMarkdown h4 { font-family: var(--mono); font-size: .78rem !important; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--muted); }
+
+/* Métricas = tarjetas de cristal */
+[data-testid="stMetric"] { background: var(--glass); border: 1px solid var(--line); border-radius: 12px;
+  padding: .7rem .9rem; box-shadow: inset 0 1px 0 rgba(255,255,255,.03); animation: fgFadeUp .4s ease both;
+  transition: border-color .2s, box-shadow .2s; }
+[data-testid="stMetric"]:hover { border-color: var(--line-gold); box-shadow: var(--glow-gold); }
+[data-testid="stMetricLabel"] p { font-family: var(--mono); font-size: .62rem !important; letter-spacing: .16em;
+  text-transform: uppercase; color: var(--muted) !important; }
+[data-testid="stMetricValue"] { font-family: var(--mono); font-weight: 700; letter-spacing: -.01em; }
+
+/* Expanders, tablas, entradas */
+[data-testid="stExpander"] { background: var(--glass); border: 1px solid var(--line) !important; border-radius: 12px; }
+[data-testid="stExpander"] summary:hover { color: var(--gold-light); }
+[data-testid="stDataFrame"] { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+[data-baseweb="input"], [data-baseweb="select"] > div, .stTextArea textarea, .stNumberInput input {
+  background: rgba(8, 10, 15, .9) !important; border-color: var(--line) !important; }
+[data-baseweb="input"]:focus-within, [data-baseweb="select"] > div:focus-within { border-color: var(--line-gold) !important;
+  box-shadow: 0 0 0 3px rgba(212,175,55,.10); }
+
+/* Botones */
+.stButton > button[kind="primary"] { box-shadow: 0 0 0 1px rgba(242,210,122,.4), 0 6px 24px rgba(212,175,55,.22);
+  letter-spacing: .08em; text-transform: uppercase; font-family: var(--mono); font-size: .78rem; }
+.stButton > button[kind="primary"]:hover { box-shadow: 0 0 0 1px rgba(242,210,122,.7), 0 8px 34px rgba(212,175,55,.35); }
+.stButton > button[kind="secondary"] { background: var(--glass) !important; font-family: var(--mono); font-size: .76rem; }
+.stButton > button[kind="secondary"]:hover { border-color: var(--line-gold) !important; color: var(--gold-light) !important; }
+
+/* Barra lateral y menú */
+[data-testid="stSidebar"] { background: linear-gradient(180deg, #080A0F, #05070B) !important;
+  border-right: 1px solid var(--line) !important; }
+[data-testid="stSidebarNav"] a { border-radius: 8px; transition: background .15s; }
+[data-testid="stSidebarNav"] a:hover { background: rgba(212,175,55,.07); }
+[data-testid="stSidebarNav"] a[aria-current="page"] { background: linear-gradient(90deg, rgba(212,175,55,.18), rgba(212,175,55,.02));
+  box-shadow: inset 2px 0 0 var(--gold); }
+[data-testid="stSidebarNav"] header, [data-testid="stNavSectionHeader"] { font-family: var(--mono); font-size: .62rem;
+  letter-spacing: .2em; text-transform: uppercase; color: var(--faint); }
+
+/* Cabecera */
+.fs-header { background: var(--glass); border: 1px solid var(--line); border-radius: 14px; padding: .7rem 1rem;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.03); }
+.fs-mark { width: 46px; height: 46px; display: inline-block; filter: drop-shadow(0 0 14px rgba(212,175,55,.35)); }
+.fs-mark.small { width: 38px; height: 38px; }
+.fs-mark svg { width: 100%; height: 100%; }
+.fs-logo { background: linear-gradient(90deg, #F7DC8B, #D4AF37 40%, #F7DC8B 60%, #9C7A1E) 0 0 / 200% 100%;
+  -webkit-background-clip: text; background-clip: text; animation: fgShine 8s linear infinite; }
+.fs-chip.live::before { animation: fgPulse 1.6s ease-in-out infinite; }
+.fs-card { background: var(--glass); box-shadow: inset 0 1px 0 rgba(255,255,255,.03); }
+::-webkit-scrollbar { width: 9px; height: 9px; } ::-webkit-scrollbar-thumb { background: #1d2230; border-radius: 9px; }

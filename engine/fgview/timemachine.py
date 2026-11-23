@@ -49,6 +49,9 @@ class TimeMachineResult:
     days: float
     backend: str
     notes: list[str] = field(default_factory=list)
+    p_win: float = 0.0  # % de caminos que terminan con ganancia
+    kelly: float = 0.0  # Fracción de Kelly (riesgo óptimo por operación, en tanto por uno del capital)
+    ev_r: float = 0.0  # Expectativa en unidades de riesgo (R)
     sim_s: float = 0.0  # Segundos de simulación
     load_s: float = 0.0  # Segundos cargando el historial (lo rellena quien descarga)
 
@@ -176,12 +179,56 @@ class TimeMachine:
             pnl, tps, reason, liq = self._walk_python(params, rel_h, rel_l, rel_c, block_starts, block_lens, horizons)
         tps, reason = np.asarray(tps), np.asarray(reason)
         days = (df.index[-1] - df.index[0]).total_seconds() / 86_400 if isinstance(df.index, pd.DatetimeIndex) else 0
+        risk = abs(plan.sl_pnl) or 1.0
+        r = np.asarray(pnl, float) / risk  # Resultado de cada camino en R (1R = pérdida si salta el SL)
+        m2 = float(np.mean(r ** 2)) or 1.0
+        kelly = max(0.0, float(np.mean(r)) / m2)  # Kelly continuo: E[r] / E[r²]
         return TimeMachineResult(
             sims=sims, p_tp1=float((tps >= 1).mean() * 100), p_tp2=float((tps >= 2).mean() * 100),
             p_tp3=float((tps >= 3).mean() * 100), p_sl=float(((tps == 0) & (reason == 0)).mean() * 100),
             p_time=float(((tps == 0) & (reason == 4)).mean() * 100), p_liq=float(np.asarray(liq).mean() * 100),
             ev=float(np.mean(pnl)), var95=float(-np.percentile(pnl, 5)), eligible=len(starts), regime_band=band,
-            bars=f"{bar_minutes}m", days=days, backend=self.backend, notes=notes, sim_s=time.perf_counter() - t0)
+            bars=f"{bar_minutes}m", days=days, backend=self.backend, notes=notes,
+            p_win=float((np.asarray(pnl) > 0).mean() * 100), kelly=kelly, ev_r=float(np.mean(r)),
+            sim_s=time.perf_counter() - t0)
+
+    def fan(self, plan: Plan, df: pd.DataFrame, bar_minutes: int = 1, n: int = 70,
+            horizon_min: tuple[int, int] = (15, 30), seed: int = 3) -> dict:
+        """
+        Caminos de ejemplo para dibujar el «abanico de futuros» (mismo método del Time Machine:
+        bloques reales con volatilidad parecida). Devuelve precios y cómo terminó cada camino.
+        """
+        rel_h, rel_l, rel_c, atr_pct = self.prepare(df, bar_minutes)
+        bmin, bmax = max(1, round(15 / bar_minutes)), max(1, round(30 / bar_minutes))
+        hmax = max(1, round(horizon_min[1] / bar_minutes))
+        starts, _, _ = self.eligible_starts(atr_pct, bmax)
+        rng = np.random.default_rng(seed)
+        s, e = plan.side, plan.entry
+        tp = [t[0] for t in plan.tps]
+        paths, outcomes = [], []
+        for _ in range(n):
+            p, path, out, k = e, [e], "tiempo", 0
+            while len(path) <= hmax:
+                i0, L = int(rng.choice(starts)), int(rng.integers(bmin, bmax + 1))
+                for i in range(i0, min(i0 + L, len(rel_c))):
+                    hi, lo = p * (1 + rel_h[i]), p * (1 + rel_l[i])
+                    p *= 1 + rel_c[i]
+                    path.append(p)
+                    if out == "tiempo":
+                        if (lo <= plan.stop_loss) if s == 1 else (hi >= plan.stop_loss):
+                            out = "sl" if k == 0 else f"tp{k}"
+                        elif (hi >= tp[k]) if s == 1 else (lo <= tp[k]):
+                            k += 1
+                            if k == 3:
+                                out = "tp3"
+                    if len(path) > hmax:
+                        break
+            if out == "tiempo" and k > 0:
+                out = f"tp{k}"
+            paths.append([round(x, 8) for x in path])
+            outcomes.append(out)
+        return {"entry": e, "stop": plan.stop_loss, "tps": tp, "paths": paths, "outcomes": outcomes,
+                "bar_minutes": bar_minutes}
 
     @staticmethod
     def _walk_python(p: dict, rh, rl, rc, bs, bl, hz):

@@ -1,14 +1,14 @@
 """
 app.py
 ======
-Entrada principal de FG ISRAEL VIEW (interfaz Streamlit).
+Entrada principal de FG VIEW (interfaz Streamlit).
 
 Ejecutar:
     streamlit run app.py
 
 Distribución de la pantalla (rediseño Build 1):
 * Barra lateral: menú por secciones (Operar, Escanear, Riesgo y capital, Contexto,
-  Herramientas), interruptor 🎓 PRINCIPIANTE GOY / 🕎 EXPERTO RABBI, mercado y capital.
+  Herramientas), interruptor 🎓 PRINCIPIANTE / 🧠 EXPERTO, mercado y capital.
 * Cada módulo es una página: Modo fácil, Time Machine, Entry Timer, 🔥 BURN OUT 🔥,
   Chart Scanner, News Monitor, Alertas, Risk/Budget Manager, Order Executor, Bitácora,
   Análisis técnico (gráfico + pestañas), Fundamentales cripto, Smart Money…
@@ -40,7 +40,8 @@ from ui.simulator_tab import render_simulator  # noqa: E402
 from ui.fgview_tab import render_fgview, render_journal  # noqa: E402
 from ui.easy_tab import render_easy, render_glossary  # noqa: E402
 from ui.ladder_tab import render_ladder  # noqa: E402
-from ui import israel_pages as ip  # noqa: E402
+from ui import pro_pages as ip  # noqa: E402
+from ui.desk_page import render_desk  # noqa: E402
 from ui.mode import beginner, mode_switch  # noqa: E402
 
 ui.load_css()
@@ -411,6 +412,7 @@ def build_pages(req: AnalysisRequest, layers: dict, auto: bool) -> dict[str, lis
     return {
         "Operar": [
             P(analysis, "Gráfica y señal", "📊", "grafica", default=True),
+            P(page(render_desk), "FG DESK · 7 agentes", "🧠", "desk"),
             P(easy, "Modo fácil", "✨", "facil"),
             P(page(ip.render_time_machine), "Time Machine", "⏳", "time-machine"),
             P(page(ip.render_swing), "Modo Swing (noche)", "🌙", "swing"),

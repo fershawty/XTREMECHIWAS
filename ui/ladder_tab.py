@@ -1,7 +1,7 @@
 """
 ui/ladder_tab.py
 ================
-Pestaña "📈 Crecimiento exponencial": reto escalera sin liquidaciones (con easter egg ✡).
+Pestaña "📈 Crecimiento exponencial": reto escalera sin liquidaciones.
 """
 
 from __future__ import annotations
@@ -80,20 +80,5 @@ def render_ladder(services) -> None:
     } for s in r.steps]), hide_index=True, width="stretch", height=320)
     st.markdown("**Reglas de oro**  \n" + "  \n".join(f"{i}. {t}" for i, t in enumerate(services.ladder.rules(r), 1)))
     st.caption("Las probabilidades dependen de tu % de aciertos real. Simulación educativa, no es asesoría financiera.")
-    st.markdown(STAR_OF_DAVID, unsafe_allow_html=True)
 
 
-# Easter egg: estrella de David dorada, discreta en la esquina del panel (brilla al pasar el ratón)
-STAR_OF_DAVID = """
-<style>
-.fg-egg { position: relative; height: 0; }
-.fg-egg svg { position: absolute; right: 4px; bottom: 4px; width: 26px; height: 26px; opacity: .14;
-  transition: opacity .4s ease, transform .6s ease, filter .4s ease; cursor: default; }
-.fg-egg svg:hover { opacity: 1; transform: rotate(30deg) scale(1.35); filter: drop-shadow(0 0 6px #D4AF37); }
-</style>
-<div class="fg-egg"><svg viewBox="0 0 100 100" role="img" aria-label="Estrella de David">
-<title>✡</title>
-<polygon points="50,6 89,73 11,73" fill="none" stroke="#D4AF37" stroke-width="6" stroke-linejoin="round"/>
-<polygon points="50,94 11,27 89,27" fill="none" stroke="#F2D27A" stroke-width="6" stroke-linejoin="round"/>
-</svg></div>
-"""

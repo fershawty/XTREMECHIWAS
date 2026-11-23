@@ -138,21 +138,21 @@ def render_header(result=None) -> None:
 
 
 @functools.lru_cache(maxsize=1)
-def _logo_data_uri() -> str:
-    """Portada (assets/logo.png) incrustada en base64."""
-    path = Path(__file__).resolve().parent.parent / "assets" / "logo.png"
+def _logo_svg() -> str:
+    """Logo vectorial minimalista (assets/logo.svg), incrustado para que se vea nítido a cualquier tamaño."""
+    path = Path(__file__).resolve().parent.parent / "assets" / "logo.svg"
     try:
-        return "data:image/png;base64," + base64.b64encode(path.read_bytes()).decode()
+        return path.read_text(encoding="utf-8")
     except OSError:
         return ""
 
 
 def logo_img(small: bool = False) -> str:
-    """<img> circular con borde dorado (o el punto dorado si falta el archivo)."""
-    uri = _logo_data_uri()
-    if not uri:
+    """Marca FG VIEW (o el punto dorado si falta el archivo)."""
+    svg = _logo_svg()
+    if not svg:
         return '<span class="fs-logo-dot"></span>'
-    return f'<img class="fs-avatar{" small" if small else ""}" src="{uri}" alt="FG VIEW">'
+    return f'<span class="fs-mark{" small" if small else ""}">{svg}</span>'
 
 
 def render_banners(messages: list[str], kind: str = "warn") -> None:

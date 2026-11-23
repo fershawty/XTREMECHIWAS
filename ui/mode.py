@@ -1,11 +1,11 @@
 """
 ui/mode.py
 ==========
-Interruptor 🎓 PRINCIPIANTE GOY / 🕎 EXPERTO RABBI.
+Interruptor 🎓 PRINCIPIANTE / 🧠 EXPERTO.
 
-* PRINCIPIANTE GOY: cada módulo explica qué hace y cómo usarlo paso a paso, los
+* PRINCIPIANTE: cada módulo explica qué hace y cómo usarlo paso a paso, los
   resultados salen en frases simples y las tablas técnicas quedan plegadas.
-* EXPERTO RABBI: todo el detalle técnico a la vista, sin explicaciones.
+* EXPERTO: todo el detalle técnico a la vista, sin explicaciones.
 """
 
 from __future__ import annotations
@@ -14,8 +14,8 @@ from contextlib import contextmanager
 
 import streamlit as st
 
-BEGINNER = "🎓 PRINCIPIANTE GOY"
-EXPERT = "🕎 EXPERTO RABBI"
+BEGINNER = "🎓 PRINCIPIANTE"
+EXPERT = "🧠 EXPERTO"
 MODES = (BEGINNER, EXPERT)
 
 

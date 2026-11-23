@@ -113,14 +113,15 @@ class PositionPlanner:
 
     # ------------------------------------------------------------------- plan
     def plan(self, capital: float, symbol: str, direction: str, entry: float, atr5: float | None = None,
-             lev_cap: int | None = None) -> Plan:
-        """`lev_cap`: tope extra de apalancamiento (p. ej. por riesgo de squeeze)."""
+             lev_cap: int | None = None, risk_pct: float | None = None) -> Plan:
+        """`lev_cap`: tope extra de apalancamiento (squeeze). `risk_pct`: riesgo pedido (Kelly), nunca mayor que la tabla."""
         if capital <= 0 or entry <= 0 or direction not in ("LONG", "SHORT"):
             raise ValueError("Capital, entrada y dirección (LONG/SHORT) son obligatorios.")
         cfg = self.cfg
         tier, listed = self.tiers.for_coin(symbol)
         coin = self.tiers.resolve(symbol)
-        risk_pct, max_margin_pct = self.budget.rule(capital)
+        table_risk, max_margin_pct = self.budget.rule(capital)
+        risk_pct = table_risk if risk_pct is None else max(0.05, min(table_risk, risk_pct))
         notes: list[str] = []
         if not listed:
             notes.append(f"{coin} no está en los niveles A/B/C: se trata como Nivel {tier.key} (máxima prudencia).")

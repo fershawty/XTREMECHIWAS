@@ -1,10 +1,10 @@
 """
-ui/israel_pages.py
+ui/pro_pages.py
 ==================
-Páginas de FG ISRAEL VIEW Build 1 (módulos 7–16 y la estrategia 🔥 BURN OUT 🔥).
+Páginas de FG VIEW (módulos 7–16, Modo SWING, Revisor y la estrategia 🔥 BURN OUT 🔥).
 
 Todas reciben los servicios POO (FGServices) y la petición de la barra lateral, y se
-adaptan al modo 🎓 PRINCIPIANTE GOY / 🕎 EXPERTO RABBI.
+adaptan al modo 🎓 PRINCIPIANTE / 🧠 EXPERTO.
 """
 
 from __future__ import annotations

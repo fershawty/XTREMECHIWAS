@@ -2,7 +2,7 @@
 launcher.py
 ===========
 Lanzador de escritorio de FG VIEW (es el programa que se convierte en
-FGIsraelView.exe con PyInstaller).
+FGView.exe con PyInstaller).
 
 Doble clic -> ventana de arranque con la marca -> inicia el motor en segundo plano
 -> abre la app en tu navegador. Al cerrar la ventana se detiene todo.
@@ -390,8 +390,10 @@ def engine_check() -> str:
     tm = fg.time_machine.run(fg_rec.plan, hist, 5, sims=20_000)
     burn = fg.burnout.build_plan("BTC/USDT", "LONG", float(hist["close"].iloc[-1]), None, 10)
     fg.timer.check()
+    desk = fg.desk.run("DEMO/USDT", "demo", 1000, calibrate=False, fan=False)  # FG DESK: la cadena de agentes
     fg_msg = (f"FG VIEW OK ({fg_rec.light}, {fg_rec.stats.samples} casos) · Time Machine {tm.sims:,} sims "
-              f"P(TP1) {tm.p_tp1:.0f}% · BURN OUT {burn.leverage}x · núcleo {native.status()}")
+              f"P(TP1) {tm.p_tp1:.0f}% · BURN OUT {burn.leverage}x · DESK {len(desk.results)} agentes · "
+              f"núcleo {native.status()}")
     from engine.context_analyzer import ContextAnalyzer
     from engine.news_filter import NewsFilter
     from engine.pipeline import AnalysisPipeline, AnalysisRequest

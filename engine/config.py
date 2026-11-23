@@ -1,7 +1,7 @@
 """
 engine/config.py
 ================
-Configuración central de FG ISRAEL VIEW.
+Configuración central de FG VIEW.
 
 Lee las variables del archivo `.env` (vía python-dotenv) y las expone en un único
 objeto inmutable `SETTINGS`. Si una variable no existe o tiene un valor inválido,
@@ -24,10 +24,10 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 # --- Marca / versión (cámbialo aquí y se actualiza en la app y el .exe) -------
-APP_NAME = "FG ISRAEL VIEW"
-APP_VERSION = "4.1.0"
-BUILD_TAG = "BUILD 1 · BY GUS X FER X ALFREDOBONUS"
-APP_TITLE = f"{APP_NAME} {BUILD_TAG.split(' · ')[0]}"  # "FG ISRAEL VIEW BUILD 1"
+APP_NAME = "FG VIEW"
+APP_VERSION = "4.2.0"
+BUILD_TAG = "V2 · BY GUS X FER X ALFREDOBONUS"
+APP_TITLE = f"{APP_NAME} {BUILD_TAG.split(' · ')[0]}"  # "FG VIEW V2"
 APP_CREDITS = "BY GUS X FER X ALFREDOBONUS"
 
 # --- Rutas ---------------------------------------------------------------------

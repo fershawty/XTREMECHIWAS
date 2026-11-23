@@ -1,6 +1,6 @@
-# Compila FGIsraelView.exe en un servidor Windows de GitHub en cada push.
-# Descarga: pestaña "Actions" del repositorio -> última ejecución verde -> "Artifacts" -> FGIsraelView-Windows
-name: Build FGIsraelView.exe
+# Compila FGView.exe en un servidor Windows de GitHub en cada push.
+# Descarga: pestaña "Actions" del repositorio -> última ejecución verde -> "Artifacts" -> FGView-Windows
+name: Build FGView.exe
 
 on:
   push:
@@ -80,23 +80,23 @@ jobs:
         shell: pwsh
         run: |
           foreach ($d in "_tcl_data", "_tk_data") {
-            $p = "dist\FGIsraelView\_internal\$d"
+            $p = "dist\FGView\_internal\$d"
             if (-not (Test-Path $p)) { Write-Error "Falta $p en el paquete"; exit 1 }
             "{0}: {1} archivos" -f $d, (Get-ChildItem $p -Recurse -File).Count
           }
       - name: Autotest del ejecutable
         shell: pwsh
         run: |
-          $p = Start-Process -FilePath "dist\FGIsraelView\FGIsraelView.exe" -ArgumentList "--selftest" -Wait -PassThru
-          Get-Content "dist\FGIsraelView\data\selftest.txt" -ErrorAction SilentlyContinue
-          Get-Content "dist\FGIsraelView\data\launcher.log" -Tail 40 -ErrorAction SilentlyContinue
+          $p = Start-Process -FilePath "dist\FGView\FGView.exe" -ArgumentList "--selftest" -Wait -PassThru
+          Get-Content "dist\FGView\data\selftest.txt" -ErrorAction SilentlyContinue
+          Get-Content "dist\FGView\data\launcher.log" -Tail 40 -ErrorAction SilentlyContinue
           if ($p.ExitCode -ne 0) { Write-Error "El autotest del .exe falló"; exit 1 }
           # Entregamos la carpeta limpia (los datos y el .env se crean en el primer arranque del usuario)
-          Remove-Item -Recurse -Force "dist\FGIsraelView\data", "dist\FGIsraelView\.env" -ErrorAction SilentlyContinue
-      # Se sube la carpeta tal cual: GitHub la entrega en UN solo .zip con FGIsraelView/ dentro
+          Remove-Item -Recurse -Force "dist\FGView\data", "dist\FGView\.env" -ErrorAction SilentlyContinue
+      # Se sube la carpeta tal cual: GitHub la entrega en UN solo .zip con FGView/ dentro
       - uses: actions/upload-artifact@v4
         with:
-          name: FGIsraelView-Windows
+          name: FGView-Windows
           path: dist/
           retention-days: 30
 
@@ -159,7 +159,7 @@ jobs:
         run: $PY -m PyInstaller futures_scope.spec --noconfirm
       - name: Comprobar Tcl/Tk empaquetado y compatibilidad con Monterey (macOS 12)
         run: |
-          APP=dist/FGIsraelView.app/Contents
+          APP=dist/FGView.app/Contents
           test -f $APP/Frameworks/_tcl_data/init.tcl || test -f $APP/Resources/_tcl_data/init.tcl || { echo "Falta _tcl_data"; exit 1; }
           test -f $APP/Frameworks/_tk_data/tk.tcl || test -f $APP/Resources/_tk_data/tk.tcl || { echo "Falta _tk_data"; exit 1; }
           echo "Tcl/Tk empaquetado OK"
@@ -167,7 +167,7 @@ jobs:
           import pathlib, re, subprocess, sys
           MAGIC = {b"\xcf\xfa\xed\xfe", b"\xce\xfa\xed\xfe", b"\xca\xfe\xba\xbe", b"\xfe\xed\xfa\xcf"}
           worst, worst_file, count, bad = (0, 0), "", 0, []
-          for p in pathlib.Path("dist/FGIsraelView.app").rglob("*"):
+          for p in pathlib.Path("dist/FGView.app").rglob("*"):
               if p.is_symlink() or not p.is_file():
                   continue
               with open(p, "rb") as fh:
@@ -193,7 +193,7 @@ jobs:
               print("  exige más que Monterey:", b)
           if bad:
               print("--- Binarios que enlazan libcrypto/libssl:")
-              for p in pathlib.Path("dist/FGIsraelView.app").rglob("*.so"):
+              for p in pathlib.Path("dist/FGView.app").rglob("*.so"):
                   deps = subprocess.run(["otool", "-L", str(p)], capture_output=True, text=True).stdout
                   hits = [l.strip() for l in deps.splitlines()[1:] if "libcrypto" in l or "libssl" in l]
                   if hits:
@@ -202,22 +202,22 @@ jobs:
           PY
       - name: Autotest de la app
         run: |
-          dist/FGIsraelView.app/Contents/MacOS/FGIsraelView --selftest
+          dist/FGView.app/Contents/MacOS/FGView --selftest
           cat "$HOME/Library/Application Support/FGView/data/selftest.txt" || true
       - name: Crear .dmg
         run: |
           mkdir dmg
-          ditto dist/FGIsraelView.app dmg/FGIsraelView.app
+          ditto dist/FGView.app dmg/FGView.app
           ln -s /Applications dmg/Aplicaciones
           for i in 1 2 3; do
-            hdiutil create -volname "FG ISRAEL VIEW" -srcfolder dmg -ov -format UDZO "FGIsraelView-macOS-${{ matrix.arch }}.dmg" && break
+            hdiutil create -volname "FG VIEW" -srcfolder dmg -ov -format UDZO "FGView-macOS-${{ matrix.arch }}.dmg" && break
             sleep 5
           done
           ls -lh *.dmg
       - uses: actions/upload-artifact@v4
         with:
-          name: FGIsraelView-macOS-${{ matrix.arch }}
-          path: FGIsraelView-macOS-${{ matrix.arch }}.dmg
+          name: FGView-macOS-${{ matrix.arch }}
+          path: FGView-macOS-${{ matrix.arch }}.dmg
           retention-days: 30
 
   release:
@@ -233,21 +233,29 @@ jobs:
           path: art
       - name: Preparar archivos
         run: |
-          cd art/FGIsraelView-Windows && zip -qr ../../FGIsraelView-Build1-Windows.zip FGIsraelView && cd ../..
-          cp art/FGIsraelView-macOS-intel/FGIsraelView-macOS-intel.dmg FGIsraelView-Build1-macOS-Intel.dmg
+          cd art/FGView-Windows && zip -qr ../../FGView-V2-Windows.zip FGView && cd ../..
+          cp art/FGView-macOS-intel/FGView-macOS-intel.dmg FGView-V2-macOS-Intel.dmg
           ls -lh *.zip *.dmg
       - name: Crear Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           cat > notes.md <<'MD'
-          ## FG ISRAEL VIEW · BUILD 1 · BY GUS X FER X ALFREDOBONUS
+          ## FG VIEW · BUILD 1 · BY GUS X FER X ALFREDOBONUS
 
-          Recomendador de scalping para futuros cripto (operaciones de 15–30 min), ahora con 10 módulos nuevos y rediseño.
+          Terminal de trading para futuros cripto: mesa de 7 agentes, Time Machine, anti-squeeze y piloto automático en papel.
 
           **Descargas**
-          - **Windows**: `FGIsraelView-Build1-Windows.zip` → descomprime y abre `FGIsraelView\FGIsraelView.exe`
-          - **Mac Intel (macOS 12 Monterey o superior)**: `FGIsraelView-Build1-macOS-Intel.dmg` → arrastra a Aplicaciones; la primera vez Control + clic → Abrir
+          - **Windows**: `FGView-V2-Windows.zip` → descomprime y abre `FGView\FGView.exe`
+          - **Mac Intel (macOS 12 Monterey o superior)**: `FGView-V2-macOS-Intel.dmg` → arrastra a Aplicaciones; la primera vez Control + clic → Abrir
+
+          **Novedades v4.2 · FG VIEW V2**
+          - 🧠 **FG DESK**: mesa de 7 agentes para operaciones cortas en futuros (Spotter → Prior → Pricer → Edge → Kelly → Taker → Closer). Si uno bloquea, no se opera.
+          - 🎯 **Precisión**: calibración sin mirar el futuro (¿cuando dice 60%, gana el 60%?), probabilidad combinada Time Machine + base histórica, ventaja neta en R después de comisiones y tamaño por ¼ de Kelly (nunca más que la tabla de capital).
+          - 🔄 **Rotación de señales**: cada filtro pesa según lo que está funcionando en las últimas 24 h. Libro de órdenes y bandas Z del VWAP en el Spotter.
+          - ✨ **Animaciones**: sinapsis neuronal (dendritas, impulsos, orbe central, rayos de aprobación), pipeline, LIVE WIRE, THE TAPE con bandas Z, radar de señales, abanico de futuros, traza, rotación y calibración.
+          - 🤖 **Piloto automático** de la mesa en papel; el modo real solo se desbloquea con 50 operaciones, profit factor ≥ 1.2 y drawdown ≤ 10%, más tu activación. Botón rojo de apagado.
+          - 🎨 **Rediseño V2** tipo terminal profesional y **logo nuevo minimalista**. Marca FG VIEW.
 
           **Novedades v4.1**
           - 🌙 **Modo SWING / nocturno**: para dejar la operación abierta hasta 12 h. Tendencia de 4 h + 1 h, SL estructural, 3–5x máximo, liquidación lejísimos del SL y Time Machine de caminos de 8–12 h.
@@ -264,7 +272,7 @@ jobs:
           - 🛡️ Anti-squeeze (v4.0.4): detecta subidas/caídas bruscas que liquidan, aviso fijo en la gráfica, bloqueo de SHORT/LONG en riesgo alto, apalancamiento limitado al peor movimiento de 30 min de las últimas 24 h y alerta automática para posiciones abiertas.
           - 🔥 BURN OUT ya no bloquea (v4.0.4): siempre da la operación; si no es recomendable la marca ⚠️ con los motivos.
           - 🧲 Anti short squeeze 2.0 (v4.0.5): no recomienda SHORT después de una caída fuerte (agotamiento, RSI en sobreventa, fuera de Bollinger), zonas estimadas de liquidación de cortos y largos en la gráfica, y escudo automático que mueve el SL (break-even con ganancia, más cerca con pérdida; también en el exchange en modo real).
-          - 🎓/🕎 Interruptor **PRINCIPIANTE GOY / EXPERTO RABBI**: explicaciones paso a paso o todo el detalle técnico.
+          - 🎓/🧠 Interruptor **PRINCIPIANTE / EXPERTO**: explicaciones paso a paso o todo el detalle técnico.
           - 🧭 Rediseño: menú lateral por secciones (Operar, Escanear, Riesgo y capital, Contexto, Herramientas).
           - ⏳ **Time Machine**: 100,000 simulaciones Monte Carlo (bootstrap por bloques de 15–30 min, 90 días de velas de 1 min, solo tramos con volatilidad ±20% de la actual) → P(TP1/TP2/TP3/SL/tiempo), expectativa y VaR 95% con veredicto. Núcleo C++.
           - 📡 **Chart Scanner**: niveles A/B/C en 5m/15m/1h (cruce EMA 9/21, rupturas de 1h, rebote VWAP, divergencias RSI, picos de volumen, squeeze) → top 5 por puntuación, auto cada minuto.
@@ -280,5 +288,5 @@ jobs:
           _Herramienta educativa: solo ejecuta órdenes si tú confirmas (papel por defecto). No es asesoría financiera._
           MD
           TAG="${{ inputs.release_tag }}"; TAG="${TAG:-$GITHUB_REF_NAME}"
-          gh release create "$TAG" FGIsraelView-Build1-Windows.zip FGIsraelView-Build1-macOS-Intel.dmg --target "$GITHUB_SHA" \
-            --repo "$GITHUB_REPOSITORY" --title "FG ISRAEL VIEW Build 1 ($TAG)" --notes-file notes.md --latest
+          gh release create "$TAG" FGView-V2-Windows.zip FGView-V2-macOS-Intel.dmg --target "$GITHUB_SHA" \
+            --repo "$GITHUB_REPOSITORY" --title "FG VIEW V2 ($TAG)" --notes-file notes.md --latest

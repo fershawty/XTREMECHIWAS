@@ -152,7 +152,7 @@ class PriceAlerts:
                     fired.append(FiredAlert(pos["coin"], "squeeze", f"🚨 {pos['coin']} {pos['direction']}: {sq.text()}"))
         if send:
             for f in fired:
-                self.sender.send_text(f"🔔 FG ISRAEL VIEW · {f.message}")
+                self.sender.send_text(f"🔔 FG VIEW · {f.message}")
         return fired
 
     def maybe_check(self, every_s: float = 60.0) -> list[FiredAlert]:
