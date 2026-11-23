@@ -249,6 +249,13 @@ jobs:
           - **Windows**: `FGView-V2-Windows.zip` → descomprime y abre `FGView\FGView.exe`
           - **Mac Intel (macOS 12 Monterey o superior)**: `FGView-V2-macOS-Intel.dmg` → arrastra a Aplicaciones; la primera vez Control + clic → Abrir
 
+          **Novedades v4.3 · FG DESK TERMINAL**
+          - 🛰️ **ORBITALES**: esfera armilar 3D con los 7 agentes orbitando el núcleo FG y el ticket saltando de agente en agente, radar de rastreo, fuentes de datos, Mission Control, cuenta regresiva al cierre de vela, telemetría por agente y registro de vuelo.
+          - 📼 **THE TAPE**: velas, bandas σ del VWAP, perfil de volumen y **escalera real del libro de órdenes** de Binance con spread y desequilibrio.
+          - 🎲 **EL PRICER**: tablero de Galton cuyas bolitas siguen la distribución REAL del Time Machine (en R), con P(TP1), P(SL), EV y ¼ Kelly.
+          - 🏔️ **CORDILLERAS DE SEÑALES**: 16 señales reales en el tiempo (RSI, volumen, ADX, ATR, Bollinger, MACD, VWAP z, EMAs, filtros) con cresta caliente.
+          - 💹 **MESA PNL**, pipeline, traza, tickers y LIVE WIRE en una sola terminal animada; debajo, la sinapsis neuronal, el abanico, el radar, la rotación y la calibración.
+
           **Novedades v4.2 · FG VIEW V2**
           - 🧠 **FG DESK**: mesa de 7 agentes para operaciones cortas en futuros (Spotter → Prior → Pricer → Edge → Kelly → Taker → Closer). Si uno bloquea, no se opera.
           - 🎯 **Precisión**: calibración sin mirar el futuro (¿cuando dice 60%, gana el 60%?), probabilidad combinada Time Machine + base histórica, ventaja neta en R después de comisiones y tamaño por ¼ de Kelly (nunca más que la tabla de capital).

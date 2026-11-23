@@ -581,6 +581,9 @@ class DataFeeder:
                 "spread_pct": round((best_ask - best_bid) / mid * 100.0, 4),
                 "imbalance": round((bid_vol - ask_vol) / total, 3) if total > 0 else 0.0,
                 "bid_vol10": round(bid_vol, 4), "ask_vol10": round(ask_vol, 4), "wall": wall,
+                # Escalera del libro (12 niveles por lado) para «THE TAPE» de FG DESK
+                "bids": [[float(p), float(q)] for p, q, *_ in bids[:12]],
+                "asks": [[float(p), float(q)] for p, q, *_ in asks[:12]],
             }
         except Exception as exc:  # noqa: BLE001
             log.info("Libro de órdenes no disponible en %s: %s", exchange.id, exc)

@@ -82,6 +82,7 @@ class DeskDecision:
     calibration: dict | None = None
     sent: bool = False
     tape: dict | None = None  # Velas, VWAP y bandas Z para «THE TAPE»
+    ridges: list = field(default_factory=list)  # Señales en el tiempo («SIGNAL RIDGES»)
     raw: dict = field(default_factory=dict)  # Valores crudos para el radar
 
     @property
@@ -258,9 +259,52 @@ class Desk:
             return None
         dev = (snap.df5["close"] - snap.df5["vwap"]).iloc[-48:]
         rnd = lambda col: [round(float(x), 8) for x in df[col].ffill().bfill()]  # noqa: E731
+        ob = snap.order_book or {}
+        # Perfil de volumen (volumen negociado por nivel de precio) de las últimas 24 h
+        last = snap.df5.iloc[-288:]
+        lo_p, hi_p = float(last["low"].min()), float(last["high"].max())
+        edges = np.linspace(lo_p, hi_p, 25)
+        mid = ((last["high"] + last["low"]) / 2).to_numpy(float)
+        vp = np.histogram(mid, bins=edges, weights=last["volume"].to_numpy(float))[0] if hi_p > lo_p else np.zeros(24)
         return {"o": rnd("open"), "h": rnd("high"), "l": rnd("low"), "c": rnd("close"), "vwap": rnd("vwap"),
-                "sd": float(dev.std()) if len(dev) > 2 else 0.0, "z": Desk.vwap_z(snap.df5),
-                "book": (snap.order_book or {}).get("imbalance")}
+                "vol": rnd("volume"), "sd": float(dev.std()) if len(dev) > 2 else 0.0, "z": Desk.vwap_z(snap.df5),
+                "book": ob.get("imbalance"), "spread": ob.get("spread_pct"),
+                "levels": {"bids": ob["bids"], "asks": ob["asks"]} if ob.get("bids") and ob.get("asks") else None,
+                "vp": {"p": [round(float(e), 8) for e in edges], "v": [round(float(v), 4) for v in vp]}}
+
+    def ridges(self, snap, direction: str, bars: int = 120) -> list[dict]:
+        """Señales reales normalizadas 0–1 en las últimas `bars` velas de 5 min (indicadores + filtros)."""
+        df = snap.df5.iloc[-bars:]
+        out = []
+
+        def add(name, series, lo=None, hi=None):
+            s = pd.Series(series, dtype=float).ffill().bfill().fillna(0)
+            a, b = (s.min() if lo is None else lo), (s.max() if hi is None else hi)
+            v = ((s - a) / (b - a)).clip(0, 1) if b > a else s * 0 + .5
+            out.append({"name": name, "v": [round(float(x), 3) for x in v], "now": round(float(v.iloc[-1]), 3)})
+
+        if len(df) < 20:
+            return out
+        for col, name, lo, hi in (("rsi", "RSI", 0, 100), ("rvol", "Volumen rel.", 0, 3), ("adx", "ADX", 0, 50),
+                                  ("atr_pct", "ATR %", None, None), ("bb_width", "Ancho Bollinger", None, None),
+                                  ("macd_hist", "MACD hist.", None, None)):
+            if col in df:
+                add(name, df[col], lo, hi)
+        if "vwap" in df:
+            dev = df["close"] - df["vwap"]
+            sd = dev.rolling(48, min_periods=10).std()
+            add("VWAP z", (dev / sd).clip(-3, 3), -3, 3)
+        if "ema_9" in df and "ema_21" in df:
+            add("EMA 9−21", (df["ema_9"] - df["ema_21"]) / df["close"] * 1000)
+        add("Momentum 1h", df["close"].pct_change(12) * 100)
+        add("Rango vela", (df["high"] - df["low"]) / df["close"] * 100)
+        try:
+            mat = self.s.filters.matrix(snap.df5, snap.df1h, direction)[-bars:]
+            for j, name in enumerate(self.s.filters.names):
+                add(name[:22], pd.Series(mat[:, j].astype(float)).rolling(6, min_periods=1).mean(), 0, 1)
+        except Exception:  # noqa: BLE001 - las cordilleras son visuales
+            pass
+        return out
 
     @staticmethod
     def vwap_z(df5: pd.DataFrame, bars: int = 48) -> float | None:
@@ -316,7 +360,8 @@ class Desk:
         """Corre la cadena completa. `send_mode`: None = solo preparar; "paper"/"live" = enviar si aprueba."""
         s = self.s
         res, snap, rep, rot, wscore = self.spot(symbol, market, capital, exchange, direction)
-        dec = DeskDecision(symbol, rep.direction, [res], rotation=rot, tape=self.tape(snap))
+        dec = DeskDecision(symbol, rep.direction, [res], rotation=rot, tape=self.tape(snap),
+                           ridges=self.ridges(snap, rep.direction))
         dec.raw.update(score=rep.score, wscore=wscore, book=(snap.order_book or {}).get("imbalance"),
                        z=self.vwap_z(snap.df5))
         if res.status == "block":

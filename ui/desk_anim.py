@@ -133,7 +133,7 @@ function buildCards(){
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 const STEP=.62; const membrane=new Array(260).fill(0); let lastFire=-1, sparks=[], bolts=[];
 function frame(now){
-  const T=(now-t0)/1000; X.clearRect(0,0,w,h); if(BG) X.drawImage(BG,0,0,w,h);
+  const T=Math.max(0,(now-t0)/1000); X.clearRect(0,0,w,h); if(BG) X.drawImage(BG,0,0,w,h);
   bokeh.forEach(b=>{b.y-=b.v; if(b.y<-5)b.y=STAGE; const g=X.createRadialGradient(b.x,b.y,0,b.x,b.y,b.r*4);
     g.addColorStop(0,rgba(b.c,b.a*(.6+.4*Math.sin(T+b.x)))); g.addColorStop(1,rgba(b.c,0)); X.fillStyle=g; X.beginPath(); X.arc(b.x,b.y,b.r*4,0,6.283); X.fill();});
   const evaluated=nodes.filter(n=>n.status!=='idle').length, v=D.verdict;
@@ -267,7 +267,7 @@ document.getElementById('stats').innerHTML=D.p_tp1!=null?('<span style="color:#3
  '%</span> · P(tiempo) '+D.p_time+'%<br><span style="color:#9BA3B4">'+(D.sims||0).toLocaleString()+' simulaciones · EV '+(D.ev>=0?'+':'')+D.ev+' USDT</span>'):'';
 let t0=performance.now();
 function frame(now){{
-  const T=(now-t0)/1000, cyc=7.5, k=(T%cyc)/cyc, prog=Math.min(1,k/0.55), fade=k>0.85?1-(k-0.85)/0.15:1;
+  const T=Math.max(0,(now-t0)/1000), cyc=7.5, k=(T%cyc)/cyc, prog=Math.min(1,k/0.55), fade=k>0.85?1-(k-0.85)/0.15:1;
   X.clearRect(0,0,w,h);
   // Rejilla y niveles
   X.strokeStyle='rgba(148,163,184,.06)'; X.lineWidth=1; for(let g=0;g<6;g++){{const y=PT+(h-PT-PB)*g/5; X.beginPath(); X.moveTo(PL,y); X.lineTo(w-PR,y); X.stroke();}}
@@ -332,7 +332,7 @@ size(); window.addEventListener('resize',size);
 const PAL=['#3DDC97','#5AC8FA','#B388FF','#F5A623','#FF5C8A','#F2D27A','#FF8A3D','#9CFFB5'];
 const sx=Math.max(8,...D.map(d=>Math.abs(d.strength)))*1.25, sy=Math.max(8,...D.map(d=>Math.abs(d.momentum)))*1.25; let t0=performance.now();
 function frame(now){{
-  const T=(now-t0)/1000, e=1-Math.pow(1-Math.min(1,T/1.6),3); X.clearRect(0,0,w,h);
+  const T=Math.max(0,(now-t0)/1000), e=1-Math.pow(1-Math.min(1,T/1.6),3); X.clearRect(0,0,w,h);
   const cx=w/2, cy=h/2+8, ax=w/2-40, ay=h/2-36;
   const quad=[[1,-1,'LIDERANDO','rgba(61,220,151,.05)'],[1,1,'DEBILITÁNDOSE','rgba(245,166,35,.05)'],[-1,1,'REZAGADAS','rgba(255,77,109,.05)'],[-1,-1,'MEJORANDO','rgba(90,200,250,.05)']];
   quad.forEach(([qx,qy,lab,bg])=>{{ X.fillStyle=bg; X.fillRect(qx>0?cx:cx-ax,qy<0?cy-ay:cy,ax,ay);
@@ -421,7 +421,7 @@ def pipeline_html(decision, height: int = 96) -> str:
 const A=__DATA__, FONT='__FONTJS__'; const W=document.getElementById('w'),C=document.getElementById('c'),X=C.getContext('2d'); let w,h,t0=performance.now();
 const rgba=(hex,a)=>{const n=parseInt(hex.slice(1),16);return 'rgba('+(n>>16&255)+','+(n>>8&255)+','+(n&255)+','+a+')';};
 function size(){const d=Math.min(2,devicePixelRatio||1);w=W.clientWidth;h=W.clientHeight;C.width=w*d;C.height=h*d;X.setTransform(d,0,0,d,0,0);} size(); addEventListener('resize',size);
-function frame(now){const T=(now-t0)/1000; X.clearRect(0,0,w,h); const n=A.length, y=h*.58, x0=46, x1=w-46, dx=(x1-x0)/(n-1);
+function frame(now){const T=Math.max(0,(now-t0)/1000); X.clearRect(0,0,w,h); const n=A.length, y=h*.58, x0=46, x1=w-46, dx=(x1-x0)/(n-1);
   X.strokeStyle='rgba(148,163,184,.14)'; X.lineWidth=2; X.beginPath(); X.moveTo(x0,y); X.lineTo(x1,y); X.stroke();
   const reached=A.filter(a=>a.status!=='idle').length; const prog=Math.min(reached-1,T/.62);
   if(reached>0){const g=X.createLinearGradient(x0,0,x0+dx*Math.max(0,prog),0); g.addColorStop(0,'rgba(212,175,55,.2)'); g.addColorStop(1,'#F2D27A');
@@ -456,7 +456,7 @@ function size(){const d=Math.min(2,devicePixelRatio||1);w=W.clientWidth;h=W.clie
 const n=D.c.length, sd=D.sd||0; const vals=D.h.concat(D.l, D.vwap.map(v=>v+2*sd), D.vwap.map(v=>v-2*sd)).filter(x=>x!=null&&isFinite(x));
 let lo=Math.min(...vals), hi=Math.max(...vals); const pad=(hi-lo)*.06; lo-=pad; hi+=pad;
 document.getElementById('px').innerHTML='$'+D.c[n-1].toLocaleString(undefined,{maximumFractionDigits:6})+'<span style="font-size:10px;color:#9BA3B4;margin-left:8px">z '+(D.z==null?'—':(D.z>=0?'+':'')+D.z.toFixed(2))+'</span>';
-function frame(now){const T=(now-t0)/1000; X.clearRect(0,0,w,h); const PL=10, PR=70, PT=34, PB=34, cw=(w-PL-PR)/n, Y=v=>PT+(h-PT-PB)*(1-(v-lo)/(hi-lo));
+function frame(now){const T=Math.max(0,(now-t0)/1000); X.clearRect(0,0,w,h); const PL=10, PR=70, PT=34, PB=34, cw=(w-PL-PR)/n, Y=v=>PT+(h-PT-PB)*(1-(v-lo)/(hi-lo));
   // Bandas Z
   [[2,'rgba(179,136,255,.07)'],[1,'rgba(90,200,250,.08)']].forEach(([k,f])=>{X.fillStyle=f; X.beginPath();
     D.vwap.forEach((v,i)=>{const x=PL+cw*(i+.5); i?X.lineTo(x,Y(v+k*sd)):X.moveTo(x,Y(v+k*sd));});
@@ -499,7 +499,7 @@ def radar_html(radar: list[dict] | None, height: int = 330) -> str:
 <script>
 const D=__DATA__, FONT='__FONTJS__'; const W=document.getElementById('w'),C=document.getElementById('c'),X=C.getContext('2d'); let w,h,t0=performance.now();
 function size(){const d=Math.min(2,devicePixelRatio||1);w=W.clientWidth;h=W.clientHeight;C.width=w*d;C.height=h*d;X.setTransform(d,0,0,d,0,0);} size(); addEventListener('resize',size);
-function frame(now){const T=(now-t0)/1000, e=1-Math.pow(1-Math.min(1,T/1.4),3); X.clearRect(0,0,w,h);
+function frame(now){const T=Math.max(0,(now-t0)/1000), e=1-Math.pow(1-Math.min(1,T/1.4),3); X.clearRect(0,0,w,h);
   const cx=w/2, cy=h/2+12, R=Math.min(w,h)*.34, n=D.length, ang=i=>-Math.PI/2+i*6.283/n;
   for(let r=1;r<=4;r++){X.strokeStyle='rgba(148,163,184,'+(r===4?.18:.08)+')'; X.beginPath(); for(let i=0;i<=n;i++){const a=ang(i%n), x=cx+R*r/4*Math.cos(a), y=cy+R*r/4*Math.sin(a); i?X.lineTo(x,y):X.moveTo(x,y);} X.stroke();}
   D.forEach((d,i)=>{const a=ang(i); X.strokeStyle='rgba(148,163,184,.10)'; X.beginPath(); X.moveTo(cx,cy); X.lineTo(cx+R*Math.cos(a),cy+R*Math.sin(a)); X.stroke();

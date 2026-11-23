@@ -52,6 +52,7 @@ class TimeMachineResult:
     p_win: float = 0.0  # % de caminos que terminan con ganancia
     kelly: float = 0.0  # Fracción de Kelly (riesgo óptimo por operación, en tanto por uno del capital)
     ev_r: float = 0.0  # Expectativa en unidades de riesgo (R)
+    hist: list = field(default_factory=list)  # Conteo de resultados en R (13 cajones de −1.5R a +3.5R)
     sim_s: float = 0.0  # Segundos de simulación
     load_s: float = 0.0  # Segundos cargando el historial (lo rellena quien descarga)
 
@@ -183,13 +184,14 @@ class TimeMachine:
         r = np.asarray(pnl, float) / risk  # Resultado de cada camino en R (1R = pérdida si salta el SL)
         m2 = float(np.mean(r ** 2)) or 1.0
         kelly = max(0.0, float(np.mean(r)) / m2)  # Kelly continuo: E[r] / E[r²]
+        hist = np.histogram(np.clip(r, -1.5, 3.499), bins=13, range=(-1.5, 3.5))[0].tolist()
         return TimeMachineResult(
             sims=sims, p_tp1=float((tps >= 1).mean() * 100), p_tp2=float((tps >= 2).mean() * 100),
             p_tp3=float((tps >= 3).mean() * 100), p_sl=float(((tps == 0) & (reason == 0)).mean() * 100),
             p_time=float(((tps == 0) & (reason == 4)).mean() * 100), p_liq=float(np.asarray(liq).mean() * 100),
             ev=float(np.mean(pnl)), var95=float(-np.percentile(pnl, 5)), eligible=len(starts), regime_band=band,
             bars=f"{bar_minutes}m", days=days, backend=self.backend, notes=notes,
-            p_win=float((np.asarray(pnl) > 0).mean() * 100), kelly=kelly, ev_r=float(np.mean(r)),
+            p_win=float((np.asarray(pnl) > 0).mean() * 100), kelly=kelly, ev_r=float(np.mean(r)), hist=hist,
             sim_s=time.perf_counter() - t0)
 
     def fan(self, plan: Plan, df: pd.DataFrame, bar_minutes: int = 1, n: int = 70,

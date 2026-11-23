@@ -869,6 +869,7 @@ def test_time_machine_reports_kelly(fg):
     plan = fg.planner.plan(1000, "BTC", "LONG", float(df["close"].iloc[-1]))
     r = fg.time_machine.run(plan, df, 5, sims=4000)
     assert r.kelly >= 0 and r.ev_r == pytest.approx(r.ev / abs(plan.sl_pnl), rel=1e-6)
+    assert len(r.hist) == 13 and sum(r.hist) == r.sims  # Histograma para el tablero de Galton
     fan = fg.time_machine.fan(plan, df, 5, n=10)
     assert len(fan["paths"]) == 10 and set(fan["outcomes"]) <= {"sl", "tp1", "tp2", "tp3", "tiempo"}
 
@@ -903,3 +904,17 @@ def test_desk_panels_data_and_html(fgdb):
                  anim.radar_html(dec.radar), anim.livewire_html(dec), anim.fan_html(dec.fan, dec.tm),
                  anim.trace_html(dec), anim.rotation_html(dec.rotation), anim.synapse_html(None, _logo_svg())):
         assert "<" in html and "__DATA__" not in html and "__H__" not in html
+
+
+def test_desk_terminal_payload_and_html(fgdb):
+    from ui.components import _logo_svg
+    from ui.desk_terminal import build_payload, terminal_html
+
+    dec = _desk_forced(fgdb).run("DEMO/USDT", "demo", 1000)
+    pay = build_payload(fgdb, dec, [("SOL/USDT", 80.0, "")], 1000)
+    assert len(pay["agents"]) == 7 and pay["tape"]["vp"]["v"] and len(pay["feeds"]) == 6
+    assert pay["tm"] and pay["ridges"] and pay["verdict"] == "approved"
+    html = terminal_html(pay, _logo_svg())
+    assert "__DATA__" not in html and "ORBITALES" in html and "EL PRICER" in html
+    idle = terminal_html(build_payload(fgdb, None), _logo_svg())  # Sin decisión también se dibuja
+    assert "FG DESK" in idle
