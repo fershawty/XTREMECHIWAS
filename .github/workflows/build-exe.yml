@@ -249,6 +249,12 @@ jobs:
           - **Windows**: `FGView-V2-Windows.zip` → descomprime y abre `FGView\FGView.exe`
           - **Mac Intel (macOS 12 Monterey o superior)**: `FGView-V2-macOS-Intel.dmg` → arrastra a Aplicaciones; la primera vez Control + clic → Abrir
 
+          **Novedades v4.7 · 🪜 modo escalera para capital pequeño ($10–20)**
+          - Empiezas con 10–20 USDT y la mesa con el piloto hacen crecer el saldo solos: 4% de riesgo hasta $50, 3% hasta $100 y 2% hasta $250; luego la tabla normal.
+          - Caja fuerte: cada vez que el saldo se duplica, el 20% de la ganancia se guarda y ya no se arriesga. Freno: tras 2 pérdidas seguidas el riesgo baja a la mitad; si cae al 50% de lo puesto, se pausa sola.
+          - Respeta el mínimo de orden de Binance (BTC ~100, ETH ~20, otras ~5 USDT): si no alcanza, la mesa busca otra cripto.
+          - Prueba real permitida con ≤ 25 USDT sin las 50 operaciones de papel, siempre con API key sin retiro, LIVE_TRADING_ENABLED=true, margen aislado y SL en el exchange.
+
           **Novedades v4.6 · barra lateral profesional y veredicto de 3 niveles**
           - 🧭 Barra lateral reorganizada: marca con reloj UTC, tarjeta de mercado con mini-gráfica, menú compacto con iconos de línea, contadores y página activa resaltada, mini-mesa de agentes y configuración agrupada.
           - 🚦 Cada análisis da SIEMPRE un veredicto ✅ OPERAR / ⏸️ ESPERAR / ⛔ NO OPERAR, junto con lo más recomendado y su probabilidad.

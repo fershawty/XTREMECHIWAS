@@ -49,16 +49,22 @@ def render_desk(svc, req) -> None:
                                        "automático solo abre las APROBADAS.")
     go = c3.button("▶ Correr la mesa", type="primary", key="dk_go", width="stretch")
     capital = _capital()
+    lstat = svc.ladder_desk.status() if getattr(svc, "ladder_desk", None) is not None else None
+    lrisk = None
+    if lstat is not None and lstat.enabled and not lstat.paused:
+        capital, lrisk = lstat.balance, lstat.risk_pct
+        st.caption(f"🪜 Escalera activa: la mesa opera con el saldo de la escalera ({fmt_usd(capital)}) y "
+                   f"{'la tabla normal' if lrisk is None else f'{lrisk:g}% de riesgo'} por operación.")
     if go:
         try:
             with st.spinner("Los agentes están analizando: Spotter → Prior → Pricer (100,000 caminos + calibración) → "
                             "Edge → Kelly → Taker…"):
                 if target.startswith("🔎"):
-                    dec, ranked = svc.desk.scan(coins, market, capital, req.exchange)
+                    dec, ranked = svc.desk.scan(coins, market, capital, req.exchange, ladder_risk=lrisk)
                     st.session_state["dk_ranked"] = ranked
                 else:
                     sym = "DEMO/USDT" if market == "demo" else f"{target}/USDT"
-                    dec = svc.desk.run(sym, market, capital, req.exchange, direction)
+                    dec = svc.desk.run(sym, market, capital, req.exchange, direction, ladder_risk=lrisk)
             st.session_state["dk_last"] = dec
             st.rerun()  # Para que la mini-mesa de la barra lateral muestre esta decisión al instante
         except Exception as exc:  # noqa: BLE001
@@ -102,7 +108,47 @@ def render_desk(svc, req) -> None:
             out = svc.executor.submit(dec.ticket, confirmed=True, mode="paper")
             st.success("Abierta en papel.") if out.get("status") == "filled" else st.error(
                 (out.get("problems") or [out.get("message")])[0])
+    _ladder(svc)
     _autopilot(svc, req, market, capital)
+
+
+def _ladder(svc) -> None:
+    lad = getattr(svc, "ladder_desk", None)
+    if lad is None:
+        return
+    st.markdown("### 🪜 Modo escalera · de $10–20 hacia arriba")
+    guide("Empiezas con poco y la mesa hace crecer el saldo operación por operación. Arriesga más en proporción cuando el "
+          "capital es pequeño (4% hasta $50, 3% hasta $100, 2% hasta $250) y se vuelve más conservadora conforme sube.",
+          ["Pon cuánto quieres arriesgar en total (10–20 USDT) y enciende la escalera.",
+           "Enciende el 🤖 piloto abajo: él opera con el saldo de la escalera.",
+           "Cada vez que el saldo se duplica, el 20% de la ganancia va a la caja fuerte y ya no se arriesga."],
+          "Tras 2 pérdidas seguidas el riesgo baja a la mitad; si el saldo cae al 50% de lo que pusiste, la escalera se pausa sola.")
+    stt = lad.status()
+    c = st.columns([1, 1, 1.2], vertical_alignment="bottom")
+    start = c[0].number_input("Capital inicial (USDT)", 5.0, 500.0, float(stt.start), step=1.0, key="lad_start")
+    if not stt.enabled:
+        if c[1].button("🪜 Empezar escalera", type="primary", key="lad_go", width="stretch"):
+            lad.start(start)
+            st.rerun()
+    elif c[1].button("⏹ Detener escalera", key="lad_stop", width="stretch"):
+        lad.stop()
+        st.rerun()
+    c[2].caption("🔓 Prueba real permitida con ≤ 25 USDT (con tus API keys sin retiro y LIVE_TRADING_ENABLED=true)."
+                 if start <= 25 else "Más de 25 USDT: el modo real pide antes 50 operaciones en papel con buenos resultados.")
+    if not stt.enabled:
+        return
+    if stt.paused:
+        st.error("🪜 " + stt.paused)
+    k = st.columns(5)
+    k[0].metric("Saldo escalera", fmt_usd(stt.balance), f"{(stt.balance / stt.start - 1) * 100:+.1f}%")
+    k[1].metric("Caja fuerte", fmt_usd(stt.vault))
+    k[2].metric("Siguiente meta", fmt_usd(stt.next_target))
+    k[3].metric("Riesgo/operación", "tabla" if stt.risk_pct is None else f"{stt.risk_pct:g}%",
+                "freno: 2 pérdidas" if stt.streak >= 2 else None, delta_color="inverse")
+    k[4].metric("Operaciones", stt.trades)
+    st.progress(stt.progress, text=f"Hacia {fmt_usd(stt.next_target)} · {stt.progress * 100:.0f}%")
+    if len(stt.history) > 1:
+        st.line_chart(stt.history, height=140)
 
 
 def _autopilot(svc, req, market: str, capital: float) -> None:

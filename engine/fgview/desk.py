@@ -399,7 +399,7 @@ class Desk:
 
     def run(self, symbol: str, market: str, capital: float, exchange: str | None = None, direction: str = "Auto",
             calibrate: bool = True, fan: bool = True, send_mode: str | None = None,
-            operable: bool | None = None) -> DeskDecision:
+            operable: bool | None = None, ladder_risk: float | None = None) -> DeskDecision:
         """
         Corre la cadena completa. `send_mode`: None = solo preparar; "paper"/"live" = enviar (SOLO si aprueba).
         `operable` (por defecto el de la mesa): aunque un agente bloquee, la cadena sigue y entrega la mejor
@@ -475,7 +475,11 @@ class Desk:
         # --- KELLY ---
         t0 = time.perf_counter()
         table_risk, _ = s.planner.budget.rule(capital)
+        if ladder_risk is not None:  # 🪜 Escalera: riesgo por escalón (micro-capital)
+            table_risk = ladder_risk
         kelly_risk = tm.kelly * self.kelly_fraction * 100
+        if ladder_risk is not None:
+            kelly_risk = max(kelly_risk, ladder_risk * 0.5)
         budget = s.budget.status() if s.budget else None
         if budget is not None and budget.defensive:
             kelly_risk /= 2
@@ -484,13 +488,29 @@ class Desk:
         st_k = "pass" if risk >= 0.1 and not objected else "block"
         if operable and (objected or risk < 0.1):  # 🎲 Operable: tamaño mínimo porque la mesa no lo respalda
             risk, st_k = min(table_risk, self.OPERABLE_RISK), "info"
-        plan = s.planner.plan(capital, symbol, rep.direction, snap.price, snap.atr5, lev_cap=sq.lev_cap, risk_pct=risk)
+        lad = dict(risk_max=ladder_risk, margin_max_pct=50.0) if ladder_risk is not None else {}
+        plan = s.planner.plan(capital, symbol, rep.direction, snap.price, snap.atr5, lev_cap=sq.lev_cap, risk_pct=risk, **lad)
+        from engine.fgview.ladder_desk import min_notional
+
+        mn = min_notional(coin) if market == "crypto" else 0.0
+        if plan.notional < mn:  # Mínimo de orden de Binance
+            need = mn / plan.notional * risk
+            if need <= 2 * risk:
+                plan = s.planner.plan(capital, symbol, rep.direction, snap.price, snap.atr5, lev_cap=sq.lev_cap,
+                                      risk_pct=need, risk_max=max(need, ladder_risk or need), margin_max_pct=60.0)
+                risk = need
+            if plan.notional < mn * 0.999:
+                st_k = "block"
+                dec.raw["min_notional"] = mn
         dec.plan, dec.risk_pct = plan, risk
         dec.results.append(AgentResult(
             "KELLY", st_k, f"¼ Kelly {kelly_risk:.2f}% · tabla {table_risk:g}% → riesgo {risk:.2f}% "
             f"({fmt_usd(plan.risk_usd)}) · {plan.leverage}x · margen {fmt_usd(plan.margin)}"
             + (" · modo defensivo" if budget is not None and budget.defensive else "")
-            + (" · 🎲 OPERABLE: riesgo reducido" if st_k == "info" else ""),
+            + (" · 🎲 OPERABLE: riesgo reducido" if st_k == "info" else "")
+            + (f" · ⛔ no llega al mínimo de Binance ({dec.raw['min_notional']:.0f} USDT): probar otra cripto"
+               if dec.raw.get("min_notional") else "")
+            + (" · 🪜 escalera" if ladder_risk is not None else ""),
             value=risk, ms=(time.perf_counter() - t0) * 1000))
         if st_k == "block":
             return dec
@@ -527,7 +547,7 @@ class Desk:
         return AgentResult("CLOSER", "info", txt, ms=(time.perf_counter() - t0) * 1000)
 
     def scan(self, coins: list[str], market: str, capital: float, exchange: str | None = None,
-             top: int = 3, send_mode: str | None = None) -> tuple[DeskDecision | None, list[tuple[str, float, str]]]:
+             top: int = 3, send_mode: str | None = None, ladder_risk: float | None = None) -> tuple[DeskDecision | None, list[tuple[str, float, str]]]:
         """Spotter rápido sobre todas; cadena completa solo para las `top` mejores."""
         ranked = []
         for c in coins:
@@ -543,7 +563,7 @@ class Desk:
         best = None
         cands = [r for r in ranked if r[1] >= 0][:top] or ([r for r in ranked if r[1] > -2][:top] if self.operable else [])
         for sym, sc, _ in cands:
-            dec = self.run(sym, market, capital, exchange, send_mode=send_mode)
+            dec = self.run(sym, market, capital, exchange, send_mode=send_mode, ladder_risk=ladder_risk)
             if dec.approved:
                 return dec, ranked
             if best is None or self._operable_score(dec) > self._operable_score(best):
@@ -625,12 +645,22 @@ class Autopilot:
         self.save(st)
         s = self.desk.s
         self.desk.close_agent()
+        ladder = getattr(s, "ladder_desk", None)
+        lstat = ladder.status() if ladder is not None else None
+        ladder_risk = None
+        if lstat is not None and lstat.enabled:
+            if lstat.paused:
+                self._log("🪜 " + lstat.paused)
+                self.set(enabled=False)
+                return None
+            capital, ladder_risk = lstat.balance, lstat.risk_pct
         today = [t for t in (s.journal.today() if s.journal else []) if str(t.get("notes", "")).startswith("DESK")]
         if len(today) >= st["max_trades_day"]:
             return None
         loss = -sum(float(t.get("pnl") or 0) for t in today)
-        if capital > 0 and loss / capital * 100 >= st["max_loss_pct"]:
-            self._log(f"🛑 Pérdida diaria de la mesa {loss / capital * 100:.1f}% ≥ {st['max_loss_pct']:g}%: pausa hasta mañana.")
+        max_loss = st["max_loss_pct"] if ladder_risk is None else max(st["max_loss_pct"], 2.5 * ladder_risk)
+        if capital > 0 and loss / capital * 100 >= max_loss:
+            self._log(f"🛑 Pérdida diaria de la mesa {loss / capital * 100:.1f}% ≥ {max_loss:g}%: pausa hasta mañana.")
             self.set(enabled=False)
             return None
         if len(s.positions.all()) >= s.risk.max_open:
@@ -640,12 +670,14 @@ class Autopilot:
             from engine.fgview.executor import live_enabled
 
             ok, why = self.live_unlocked()
+            if not ok and ladder is not None and ladder.micro_live_ok():
+                ok, why = True, "micro-prueba real de la escalera (≤ 25 USDT)"
             if not (ok and live_enabled()):
                 self._log(f"🔒 Modo real bloqueado ({why}). Sigo en papel.")
                 mode = "paper"
         coins = [c for t in s.tiers.tiers if t.key in st["tiers"] for c in t.coins]
         self.desk.send_wait = st.get("min_level") == "ESPERAR"
-        dec, _ = self.desk.scan(coins, market, capital, exchange, send_mode=mode)
+        dec, _ = self.desk.scan(coins, market, capital, exchange, send_mode=mode, ladder_risk=ladder_risk)
         if dec is not None and dec.sent:
             self._log(f"🎯 {dec.summary()} → enviada en {'papel' if mode == 'paper' else 'REAL'}.")
             try:

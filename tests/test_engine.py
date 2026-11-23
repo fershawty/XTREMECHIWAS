@@ -948,3 +948,31 @@ def test_three_level_verdict_and_pilot_levels(fgdb):
     fgdb.desk.send_wait = True
     nope = _desk_forced(fgdb, ev=-1.0).run("DEMO/USDT", "demo", 1000, send_mode="paper")
     assert not nope.sent  # NO OPERAR nunca se envía solo
+
+
+def test_ladder_risk_steps_vault_and_brake(fgdb):
+    from engine.fgview.ladder_desk import DeskLadder, min_notional
+
+    lad = fgdb.ladder_desk
+    assert DeskLadder.risk_for(15) == 4.0 and DeskLadder.risk_for(80) == 3.0 and DeskLadder.risk_for(200) == 2.0
+    assert DeskLadder.risk_for(1000) is None and min_notional("BTC") == 100 and min_notional("SOL") == 5
+    lad.start(15.0)
+    since = lad.state()["since"]
+    for pnl in (10.0, 8.0):  # 15 → 33: se duplica, 20% de la ganancia a la caja fuerte
+        fgdb.journal.add({"opened_at": since, "coin": "SOL", "pnl": pnl, "notes": "DESK · papel"})
+    stt = lad.status()
+    assert stt.vault == pytest.approx((33 - 15) * 0.2) and stt.balance == pytest.approx(33 - 3.6)
+    assert stt.next_target == pytest.approx(2 * stt.balance) and lad.micro_live_ok()
+    for _ in range(2):
+        fgdb.journal.add({"opened_at": since, "coin": "SOL", "pnl": -1.0, "notes": "DESK · papel"})
+    stt = lad.status()
+    assert stt.streak == 2 and stt.risk_pct == pytest.approx(2.0)  # 4% → freno a la mitad
+    fgdb.journal.add({"opened_at": since, "coin": "SOL", "pnl": -20.0, "notes": "DESK · papel"})
+    assert lad.status().paused
+
+
+def test_desk_ladder_raises_risk_and_respects_min_notional(fgdb):
+    desk = _desk_forced(fgdb)
+    dec = desk.run("DEMO/USDT", "demo", 15, ladder_risk=4.0)
+    assert dec.plan is not None and dec.risk_pct >= 2.0 and dec.ticket.stop_problem() is None
+    assert dec.plan.max_margin_pct == 50.0 and dec.plan.liquidation is not None

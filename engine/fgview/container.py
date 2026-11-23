@@ -73,6 +73,7 @@ class FGServices:
     swing: SwingPlanner | None = None
     reviewer: HistoryReviewer | None = None
     desk: object | None = None  # FG DESK (6 agentes)
+    ladder_desk: object | None = None  # 🪜 Modo escalera de la mesa
     autopilot: object | None = None  # Piloto automático de la mesa
     extras: dict = field(default_factory=dict)
 
@@ -113,6 +114,9 @@ class FGServices:
                    reviewer=HistoryReviewer(tiers))
         from engine.fgview.desk import Autopilot, Desk  # La mesa usa todos los servicios: se crea al final
 
+        from engine.fgview.ladder_desk import DeskLadder
+
+        inst.ladder_desk = DeskLadder(db, journal)
         inst.desk = Desk(inst, config)
         inst.autopilot = Autopilot(inst.desk)
         return inst
