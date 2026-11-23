@@ -914,6 +914,8 @@ def test_desk_terminal_payload_and_html(fgdb):
     pay = build_payload(fgdb, dec, [("SOL/USDT", 80.0, "")], 1000)
     assert len(pay["agents"]) == 7 and pay["tape"]["vp"]["v"] and len(pay["feeds"]) == 6
     assert pay["tm"] and pay["ridges"] and pay["verdict"] == "approved"
+    assert all(a["task"] and a["value"] for a in pay["agents"])  # Cada agente sabe a qué panel va y qué dato lleva
+    assert "marks" in pay["tape"] and pay["tape"]["va"] and pay["hot"]
     html = terminal_html(pay, _logo_svg())
     assert "__DATA__" not in html and "ORBITALES" in html and "EL PRICER" in html
     idle = terminal_html(build_payload(fgdb, None), _logo_svg())  # Sin decisión también se dibuja

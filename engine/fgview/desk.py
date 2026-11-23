@@ -266,7 +266,22 @@ class Desk:
         edges = np.linspace(lo_p, hi_p, 25)
         mid = ((last["high"] + last["low"]) / 2).to_numpy(float)
         vp = np.histogram(mid, bins=edges, weights=last["volume"].to_numpy(float))[0] if hi_p > lo_p else np.zeros(24)
+        # Cruces reales de EMA 9/21 dentro de la ventana (marcas ▲▼) y zona de valor (70% del volumen)
+        marks = []
+        if "ema_9" in df and "ema_21" in df:
+            d = np.sign((df["ema_9"] - df["ema_21"]).to_numpy(float))
+            marks = [[int(i), 1 if d[i] > 0 else -1] for i in range(1, len(d)) if d[i] != d[i - 1] and d[i] != 0]
+        order = np.argsort(vp)[::-1]
+        keep, acc = set(), 0.0
+        for k in order:
+            keep.add(int(k))
+            acc += float(vp[k])
+            if acc >= 0.7 * float(vp.sum() or 1):
+                break
+        va = [float(edges[min(keep)]), float(edges[max(keep) + 1])] if keep else None
+        rsi_now = float(df["rsi"].iloc[-1]) if "rsi" in df and pd.notna(df["rsi"].iloc[-1]) else None
         return {"o": rnd("open"), "h": rnd("high"), "l": rnd("low"), "c": rnd("close"), "vwap": rnd("vwap"),
+                "marks": marks, "va": va, "rsi": rsi_now,
                 "vol": rnd("volume"), "sd": float(dev.std()) if len(dev) > 2 else 0.0, "z": Desk.vwap_z(snap.df5),
                 "book": ob.get("imbalance"), "spread": ob.get("spread_pct"),
                 "levels": {"bids": ob["bids"], "asks": ob["asks"]} if ob.get("bids") and ob.get("asks") else None,

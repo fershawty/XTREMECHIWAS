@@ -249,6 +249,10 @@ jobs:
           - **Windows**: `FGView-V2-Windows.zip` → descomprime y abre `FGView\FGView.exe`
           - **Mac Intel (macOS 12 Monterey o superior)**: `FGView-V2-macOS-Intel.dmg` → arrastra a Aplicaciones; la primera vez Control + clic → Abrir
 
+          **Novedades v4.4 · agentes trabajando en pantalla**
+          - 🛸 Cada agente sale de su órbita y **vuela al panel donde trabaja** (Spotter → la cinta, Prior → las cordilleras, Pricer → el Galton, Edge → el libro, Kelly → el PNL, Taker → la escalera, Closer → la traza), con estela, el panel iluminado en su color y su etiqueta con el dato real.
+          - 📊 Más parámetros: valor y traspaso de cada paso en la traza, gráfica de actividad, marcas ▲▼ de cruces de EMA, value area y contadores en la cinta, curva de campana con μ/σ en el Pricer y encabezado de cordilleras (activas, calientes, cresta).
+
           **Novedades v4.3 · FG DESK TERMINAL**
           - 🛰️ **ORBITALES**: esfera armilar 3D con los 7 agentes orbitando el núcleo FG y el ticket saltando de agente en agente, radar de rastreo, fuentes de datos, Mission Control, cuenta regresiva al cierre de vela, telemetría por agente y registro de vuelo.
           - 📼 **THE TAPE**: velas, bandas σ del VWAP, perfil de volumen y **escalera real del libro de órdenes** de Binance con spread y desequilibrio.

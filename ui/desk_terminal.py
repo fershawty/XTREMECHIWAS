@@ -56,7 +56,26 @@ def build_payload(svc, dec, ranked=None, capital: float = 1000.0) -> dict:
                   min(1, abs(raw.get("z") or 0) / 3), "#5AC8FA"))
     feeds.append(("CADENA", f"{raw['crowd']:.0f}% del lado de la entrada" if raw.get("crowd") is not None else "L/S sin datos",
                   (raw.get("crowd") or 5) / 100, "#FF8A3D"))
+    steps = {}
+    hot = max((r for r in (dec.ridges if dec else [])), key=lambda r: r["now"], default=None)
+    prior_v = done["PRIOR"].value if "PRIOR" in done else None
+    if dec:
+        steps = {
+            "SPOTTER": (f"ponderado {raw.get('wscore', 0):.0f}/100", "LEYENDO LA CINTA"),
+            "PRIOR": (f"TP1 base {prior_v:.0f}%" if prior_v is not None else "pesando", "PESANDO SEÑALES"),
+            "PRICER": (f"P(TP1) {dec.probability:.1f}%" if dec.probability is not None else "simulando",
+                       f"SIMULANDO {tm.sims:,} CAMINOS" if tm else "SIMULANDO CAMINOS"),
+            "EDGE": (f"ventaja {dec.edge_r:+.2f}R" if dec.edge_r is not None else
+                     (f"spread {snap_tape['spread']:.3f}%" if snap_tape and snap_tape.get("spread") is not None else "midiendo"),
+                     "MIDIENDO EL SPREAD"),
+            "KELLY": (f"riesgo {dec.risk_pct:.2f}% · ¼K" if dec.risk_pct is not None else "dimensionando", "DIMENSIONANDO"),
+            "TAKER": (f"{plan.direction} {plan.entry:,.4g} post-only" if plan else "esperando orden", "COLOCANDO LA ORDEN"),
+            "CLOSER": (f"{len(svc.positions.all())} abiertas · trailing", "ARCHIVANDO EN LA BITÁCORA"),
+        }
+    for a in agents:
+        a["value"], a["task"] = steps.get(a["key"], ("en espera", "PATRULLANDO"))
     return {
+        "hot": {"name": hot["name"], "now": hot["now"]} if hot else None,
         "now": datetime.now(timezone.utc).isoformat(),
         "symbol": dec.symbol if dec else "—", "direction": (dec.direction or "") if dec else "",
         "verdict": "approved" if dec and dec.approved else "blocked" if dec and dec.blocked_by else "idle",
@@ -92,7 +111,7 @@ TEMPLATE = r"""<!doctype html><html><head><meta charset="utf-8">
 <style>
 :root{--bg:#04060a;--p:#080b12;--l:rgba(148,163,184,.13);--t:#E6E9EF;--m:#8C95A8;--f:#566074;--g:#F2D27A;--ok:#3DDC97;--bad:#FF4D6D}
 *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--t);font-family:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;font-size:11px;overflow:hidden}
-.T{display:grid;gap:7px;padding:2px;height:__H__px;grid-template-rows:54px 24px 24px 350px 548px 64px 318px 24px}
+.T{position:relative;display:grid;gap:7px;padding:2px;height:__H__px;grid-template-rows:54px 24px 24px 350px 548px 64px 318px 24px}
 .pn{position:relative;background:linear-gradient(180deg,rgba(255,255,255,.028),rgba(255,255,255,0) 30%),var(--p);border:1px solid var(--l);border-radius:12px;overflow:hidden}
 .pn.hot{border-color:rgba(242,210,122,.35);box-shadow:0 0 0 1px rgba(242,210,122,.08),0 0 28px rgba(242,210,122,.07)}
 .hd{position:absolute;left:11px;top:7px;font-size:10px;letter-spacing:.15em;color:#C9CED8;z-index:3;white-space:nowrap}
@@ -131,7 +150,7 @@ canvas{position:absolute;inset:0;width:100%;height:100%}
 .bn,.bs,.st b,.st i{white-space:nowrap}
 .lg .r{display:grid;grid-template-columns:1.3fr 1fr .6fr;gap:4px;font-size:9.5px;padding:2px 0;border-bottom:1px dashed rgba(148,163,184,.08)}
 </style></head><body>
-<div class="T" id="T">
+<div class="T" id="T"><canvas id="cFly" style="position:absolute;inset:0;z-index:30;pointer-events:none"></canvas>
  <div class="top">
   <div class="brand"><span id="logo"></span><div><div class="bn">FG DESK</div><div class="bs">7 AGENTES · UN LIBRO · FUTUROS PERPETUOS</div></div>
    <div class="navx" style="margin-left:22px;font-size:10px;letter-spacing:.18em;color:var(--m)">ORBITALES · TAPE · LIBRO · PRICER</div></div>
@@ -173,11 +192,12 @@ canvas{position:absolute;inset:0;width:100%;height:100%}
  </div>
  <div class="pn" id="pipeP"><canvas id="cPipe"></canvas></div>
  <div class="row" style="grid-template-columns:35% 31% 1fr">
-  <div class="pn"><div class="hd">◆ <b>LA TRAZA</b> <span>— CADA PASO · UNA LÍNEA · 7 COLORES</span></div>
-   <div style="position:absolute;left:11px;right:11px;top:27px;display:grid;grid-template-columns:repeat(4,1fr);gap:5px" id="tc"></div>
+  <div class="pn" id="traceP"><div class="hd">◆ <b>LA TRAZA</b> <span>— CADA PASO · UNA LÍNEA</span></div>
+   <canvas id="cAct" style="position:absolute;inset:auto;right:11px;top:28px;width:31%;height:38px"></canvas>
+   <div style="position:absolute;left:11px;right:35%;top:27px;display:grid;grid-template-columns:repeat(4,1fr);gap:5px" id="tc"></div>
    <div class="tl" id="trace" style="position:absolute;left:11px;right:11px;top:74px;bottom:8px;overflow:hidden"></div></div>
-  <div class="pn"><div class="hd">◆ <b>EL PRICER</b> <span>— PRECIO · VOL · TIEMPO → P(TP1) · GALTON</span></div><canvas id="cGal"></canvas></div>
-  <div class="pn"><div class="hd">◆ <b>CORDILLERAS DE SEÑALES</b> <span>— FUERZA EN EL TIEMPO · CRESTA CALIENTE</span></div><canvas id="cRid"></canvas></div>
+  <div class="pn" id="galP"><div class="hd">◆ <b>EL PRICER</b> <span>— PRECIO · VOL · TIEMPO → P(TP1) · GALTON</span></div><canvas id="cGal"></canvas></div>
+  <div class="pn" id="ridP"><div class="hd">◆ <b>CORDILLERAS DE SEÑALES</b> <span>— FUERZA EN EL TIEMPO · CRESTA CALIENTE</span></div><canvas id="cRid"></canvas></div>
  </div>
  <div class="tick"><div class="lab" style="color:#05070b;background:#E6E9EF">FG DESK · ONLINE</div><div style="overflow:hidden;flex:1"><div class="mq" id="foot" style="animation-duration:52s"></div></div></div>
 </div>
@@ -229,17 +249,19 @@ $('gauges').innerHTML=D.agents.map(a=>{const p=a.status==='idle'?6:a.status==='b
  return '<div style="text-align:center"><div class="gauge" style="background:conic-gradient('+c+' '+p+'%,#161b27 0)"><span style="color:'+a.color+'">'+a.code+'</span></div><div style="font-size:7.5px;color:#566074;margin-top:2px">'+(a.ms!=null?a.ms+'ms':'—')+'</div></div>';}).join('');
 $('flog').innerHTML=(act.length?act:D.agents.slice(0,4)).slice(-5).map(a=>'<div class="r"><span style="color:'+a.color+'">› '+a.key+'</span><span style="color:#8C95A8">'+(a.at||'--:--')+'</span><b style="color:'+stCol(a)+'">'+(a.status==='pass'?'OK':a.status==='block'?'STOP':a.status==='info'?'INFO':'…')+'</b></div>').join('');
 // Traza
-const steps=act.length; $('tc').innerHTML=[['PASOS',steps+'/7'],['MS TOTAL',fm(act.reduce((s,a)=>s+(a.ms||0),0),0)],['BLOQUEOS',act.filter(a=>a.status==='block').length],['SIMULACIONES',D.tm?fm(D.tm.sims,0):'0']]
+const steps=act.length; $('tc').innerHTML=[['PASOS',steps+'/7'],['MS',fm(act.reduce((s,a)=>s+(a.ms||0),0),0)],['BLOQ.',act.filter(a=>a.status==='block').length],['SIMS',D.tm?fm(D.tm.sims/1000,0)+'K':'0']]
  .map(k=>'<div class="kc"><i>'+k[0]+'</i><b>'+k[1]+'</b></div>').join('');
 $('trace').innerHTML=(act.length?act:[{key:'FG DESK',color:'#566074',headline:'Esperando la primera decisión de la mesa…',at:'',status:'idle'}]).map((a,i)=>
  '<div class="ti" style="--c:'+(a.color||'#566074')+';animation-delay:'+(i*.62)+'s"><div style="display:flex;justify-content:space-between;font-size:9px"><span class="chip" style="margin:0;background:'+rgba(a.color||'#566074',.16)+';color:'+(a.color||'#888')+'">'+a.key+'</span>'+
- '<b style="color:'+stCol(a)+'">'+(a.status==='pass'?'✓ '+(a.ms||0)+'ms':a.status==='block'?'✕ BLOQUEA':a.status==='info'?'● INFO':'…')+'</b></div><div style="font-size:9.5px;color:#C9CED8;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(a.headline)+'</div></div>').join('');
+ '<b style="color:'+stCol(a)+'">'+(a.status==='pass'?'✓ '+(a.ms||0)+'ms':a.status==='block'?'✕ BLOQUEA':a.status==='info'?'● INFO':'…')+'</b></div>'+
+ '<div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:baseline"><div style="font-size:9.5px;color:#C9CED8;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(a.headline)+'</div>'+
+ '<div style="text-align:right;white-space:nowrap"><b style="font-size:10.5px;color:'+(a.color||'#888')+'">'+esc(a.value||'')+'</b><div style="font-size:8px;color:#566074">'+(i<act.length-1?a.key+'→'+act[i+1].key:a.status==='block'?'DETENIDO':'FIN')+'</div></div></div></div>').join('');
 $('foot').innerHTML=['FG VIEW V2 · FG DESK','UN LIBRO · 7 AGENTES · SIN HUMANO EN EL BUCLE EN PAPEL','ÚLTIMA OPERACIÓN '+(last==null?'—':usd(last,true)),'NETO PAPEL '+usd(P.net,true),
  'WIN RATE '+fm(P.win_rate,1)+'%','PROFIT FACTOR '+(P.pf==null?'∞':fm(P.pf)),D.summary].map(x=>'<span style="margin:0 22px;color:#C9CED8">'+esc(x)+'</span>').join('<span style="color:#3a4150">◆</span>');
 // ---------------- Canvas ----------------
 const cv={}; function setup(id){const c=$(id),x=c.getContext('2d'); cv[id]={c,x,w:0,h:0}; size(id);}
 function size(id){const o=cv[id], d=Math.min(2,devicePixelRatio||1); o.w=o.c.clientWidth; o.h=o.c.clientHeight; o.c.width=o.w*d; o.c.height=o.h*d; o.x.setTransform(d,0,0,d,0,0);}
-['cPnl','cTape','cOrb','cPipe','cGal','cRid'].forEach(setup); addEventListener('resize',()=>{Object.keys(cv).forEach(size); initOrb(); initGal();});
+['cPnl','cTape','cOrb','cPipe','cGal','cRid','cAct','cFly'].forEach(setup); addEventListener('resize',()=>{Object.keys(cv).forEach(size); initOrb(); initGal();});
 const t0=performance.now();
 // --- MESA PNL: curva de capital + barras por operación ---
 function drawPnl(t){const {x,w,h}=cv.cPnl; x.clearRect(0,0,w,h); const s=P.series, top=128, bot=h-112, L=10, R=w-10;
@@ -261,11 +283,18 @@ function drawTape(t){const {x,w,h}=cv.cTape; x.clearRect(0,0,w,h);
   const last=T.c[n-1], chg=(last/T.c[Math.max(0,n-13)]-1)*100;
   x.font='800 26px monospace'; x.textAlign='left'; x.fillStyle='#E6E9EF'; x.fillText('$'+fm(last,last<10?4:2),12,46);
   const tw=x.measureText('$'+fm(last,last<10?4:2)).width; x.font='700 10px monospace'; x.fillStyle=chg>=0?OK:BAD; x.fillText((chg>=0?'▲ +':'▼ ')+chg.toFixed(2)+'% 1h',22+tw,44);
-  x.textAlign='right'; x.fillStyle='#8C95A8'; x.font='9px monospace'; x.fillText('Z '+(T.z==null?'—':(T.z>=0?'+':'')+T.z.toFixed(2))+'   σ '+fm(sd,sd<1?4:2)+'   VELAS '+n,R+40,44);
+  const cnt=[['RSI',T.rsi==null?'—':T.rsi.toFixed(0),'#3DDC97'],['VWAP',fm(T.vwap[n-1],T.vwap[n-1]<10?4:1),'#5AC8FA'],['Z',T.z==null?'—':(T.z>=0?'+':'')+T.z.toFixed(2),'#B388FF'],['SEÑALES',(T.marks||[]).length,'#F2D27A']];
+  x.textAlign='right'; let cx2=R+40; for(let i=cnt.length-1;i>=0;i--){const q=cnt[i]; x.font='800 13px monospace'; const wv=Math.max(x.measureText(String(q[1])).width,34);
+    x.fillStyle=q[2]; x.fillText(q[1],cx2,40); x.font='7.5px monospace'; x.fillStyle='#566074'; x.fillText(q[0],cx2,50); cx2-=wv+16;}
   // Perfil de volumen (calor de liquidez por precio)
   if(T.vp){const mx=Math.max(...T.vp.v)||1; T.vp.v.forEach((v,i)=>{const y1=Y(T.vp.p[i+1]), y0=Y(T.vp.p[i]); const a=v/mx;
     const g=x.createLinearGradient(L,0,R,0); g.addColorStop(0,'rgba(179,136,255,0)'); g.addColorStop(1,'rgba(179,136,255,'+(a*.22)+')'); x.fillStyle=g; x.fillRect(L,y1,R-L,Math.max(1,y0-y1));
     x.fillStyle='rgba(245,166,35,'+(a*.55)+')'; x.fillRect(R+2,y1,a*36,Math.max(1,y0-y1-1));});}
+  if(T.va){const y1=Y(T.va[1]), y2=Y(T.va[0]); x.fillStyle='rgba(242,210,122,.045)'; x.fillRect(L,y1,R-L,y2-y1); x.strokeStyle='rgba(242,210,122,.25)'; x.setLineDash([2,5]);
+    x.beginPath(); x.moveTo(L,y1); x.lineTo(R,y1); x.moveTo(L,y2); x.lineTo(R,y2); x.stroke(); x.setLineDash([]); x.font='7.5px monospace'; x.fillStyle='rgba(242,210,122,.7)'; x.textAlign='left'; x.fillText('VALUE AREA 70%',L+4,y1-3);}
+  // Humo de liquidez: ondas sobre el perfil de volumen
+  if(T.vp){for(let k=0;k<3;k++){x.beginPath(); for(let i=0;i<=60;i++){const px=L+(R-L)*i/60, vy=Y(T.vwap[Math.min(n-1,Math.floor(i/60*(n-1)))]); const yy=vy+Math.sin(i*.35+t*(1+k*.4)+k)*(10+k*7)+Math.sin(i*.9-t*1.7)*4;
+    i?x.lineTo(px,yy):x.moveTo(px,yy);} x.strokeStyle='rgba(179,136,255,'+(.10-k*.025)+')'; x.lineWidth=6-k*1.5; x.stroke();} x.lineWidth=1;}
   [[2,'rgba(179,136,255,.08)'],[1,'rgba(90,200,250,.09)']].forEach(([k,f])=>{x.fillStyle=f; x.beginPath(); T.vwap.forEach((v,i)=>{const px=L+cw*(i+.5); i?x.lineTo(px,Y(v+k*sd)):x.moveTo(px,Y(v+k*sd));});
     for(let i=n-1;i>=0;i--) x.lineTo(L+cw*(i+.5),Y(T.vwap[i]-k*sd)); x.closePath(); x.fill();});
   x.strokeStyle='rgba(242,210,122,.9)'; x.setLineDash([4,3]); x.lineWidth=1.2; x.beginPath(); T.vwap.forEach((v,i)=>{const px=L+cw*(i+.5); i?x.lineTo(px,Y(v)):x.moveTo(px,Y(v));}); x.stroke(); x.setLineDash([]);
@@ -273,6 +302,8 @@ function drawTape(t){const {x,w,h}=cv.cTape; x.clearRect(0,0,w,h);
   for(let i=0;i<shown;i++){const up=T.c[i]>=T.o[i], px=L+cw*(i+.5), c=up?OK:BAD; x.strokeStyle=c; x.lineWidth=1; x.beginPath(); x.moveTo(px,Y(T.h[i])); x.lineTo(px,Y(T.l[i])); x.stroke();
     const y1=Y(Math.max(T.o[i],T.c[i])), y2=Y(Math.min(T.o[i],T.c[i])); x.fillStyle=up?rgba(OK,.9):rgba(BAD,.9); x.fillRect(px-cw*.33,y1,cw*.66,Math.max(1,y2-y1));
     if(T.vol){const vh=T.vol[i]/vmax*34; x.fillStyle=up?rgba(OK,.4):rgba(BAD,.4); x.fillRect(px-cw*.33,h-12-vh,cw*.66,vh);}}
+  (T.marks||[]).forEach(([i,d])=>{if(i>=shown) return; const px=L+cw*(i+.5), py=d>0?Y(T.l[i])+10:Y(T.h[i])-10; x.fillStyle=d>0?OK:BAD; x.beginPath();
+    if(d>0){x.moveTo(px,py-5); x.lineTo(px-4.5,py+3); x.lineTo(px+4.5,py+3);} else {x.moveTo(px,py+5); x.lineTo(px-4.5,py-3); x.lineTo(px+4.5,py-3);} x.fill();});
   const sx=L+((t*.16)%1)*(R-L); const sg=x.createLinearGradient(sx-50,0,sx,0); sg.addColorStop(0,'rgba(90,200,250,0)'); sg.addColorStop(1,'rgba(90,200,250,.16)'); x.fillStyle=sg; x.fillRect(sx-50,top,50,bot-top);
   const py=Y(last); x.strokeStyle='rgba(230,233,239,.4)'; x.setLineDash([2,3]); x.beginPath(); x.moveTo(L,py); x.lineTo(R,py); x.stroke(); x.setLineDash([]);
   x.fillStyle=GOLD; x.shadowColor=GOLD; x.shadowBlur=16+Math.sin(t*4)*6; x.beginPath(); x.arc(L+cw*(n-.5),py,3.6,0,6.283); x.fill(); x.shadowBlur=0;
@@ -286,7 +317,7 @@ function drawTape(t){const {x,w,h}=cv.cTape; x.clearRect(0,0,w,h);
     const b=(book+1)/2; x.fillStyle='#161b27'; x.fillRect(X0,h-12,LW-4,6); x.fillStyle=OK; x.fillRect(X0,h-12,(LW-4)*b,6); x.fillStyle=BAD; x.fillRect(X0+(LW-4)*b,h-12,(LW-4)*(1-b),6);}
   else {x.fillStyle='#566074'; x.font='9px monospace'; x.textAlign='right'; x.fillText('LIBRO NO DISPONIBLE (DEMO / SIN CONEXIÓN)',w-10,h-8);}}
 // --- ORBITALES: esfera armilar 3D ---
-let ORB=null; const RINGS=[];
+let ORB=null; const RINGS=[]; const HOME=[];
 function initOrb(){const {w,h}=cv.cOrb; const cx=w*.505, cy=h*.6, R=Math.min(w*.2,h*.36); ORB={cx,cy,R};
   RINGS.length=0; const cols=['#3DDC97','#F5A623','#B388FF','#FF5C8A','#5AC8FA','#F2D27A','#FF8A3D','#9CFFB5','#FF5C8A','#5AC8FA','#B388FF'];
   for(let i=0;i<11;i++) RINGS.push({a:(i*0.61)%Math.PI,b:(i*1.37)%(2*Math.PI),s:(i%2?1:-1)*(0.12+i*0.017),r:R*(0.82+((i*7)%5)*0.06),c:cols[i]});
@@ -327,7 +358,7 @@ function drawOrb(t){const {x,w,h}=cv.cOrb; x.clearRect(0,0,w,h); const {cx,cy,R}
     const b=x.createRadialGradient(px-s*.35,py-s*.4,1,px,py,s); b.addColorStop(0,'#fff'); b.addColorStop(.4,rgba(c,on?1:.6)); b.addColorStop(1,rgba(c,.35)); x.fillStyle=b; x.beginPath(); x.arc(px,py,s,0,6.283); x.fill();
     x.strokeStyle=stCol(o.a); x.lineWidth=1.6; x.beginPath(); x.arc(px,py,s+3,0,6.283); x.stroke();
     x.font='800 '+(8.5*f).toFixed(1)+'px monospace'; x.fillStyle='#05070b'; x.textAlign='center'; x.textBaseline='middle'; x.fillText(o.a.code,px,py+.5); x.textBaseline='alphabetic';
-    o.scr=[px,py];};
+    o.scr=[px,py]; HOME[o.i]=[px,py];};
   ags.filter(o=>o.p[2]>0).forEach(draw);
   // Núcleo FG
   const v=D.verdict, vc=v==='approved'?GOLD:v==='blocked'?BAD:'#D4AF37', Rc=R*.36*(1+Math.sin(t*2)*.02);
@@ -405,7 +436,11 @@ function drawGal(t,dt){const {x,w,h}=cv.cGal; x.clearRect(0,0,w,h); const G=GAL,
   const yb=h-48, mx=Math.max(...G.bins)||1; G.bins.forEach((v,i)=>{const px=cx+(i-(nb-1)/2)*sp*(G.rows/(nb-1)), bh=v/mx*(yb-G.bot-14); const c=i<3?'#FF4D6D':i<4?'#F5A623':i>=6?'#3DDC97':'#8C95A8';
     const g=x.createLinearGradient(0,yb-bh,0,yb); g.addColorStop(0,rgba(c,.95)); g.addColorStop(1,rgba(c,.25)); x.fillStyle=g; x.fillRect(px-sp*.34,yb-bh,sp*.68,bh);});
   if(G.bins.reduce((a,b)=>a+b,0)>900) G.bins=G.bins.map(v=>v*.5);
-  const sc2=sp*(G.rows/(nb-1)); x.strokeStyle='rgba(242,210,122,.5)'; x.setLineDash([3,3]); const z0=cx+(3-(nb-1)/2)*sc2; x.beginPath(); x.moveTo(z0,G.top); x.lineTo(z0,yb); x.stroke(); x.setLineDash([]);
+  const sc2=sp*(G.rows/(nb-1)); const tot=G.hist.reduce((a,b)=>a+b,0)||1, mu=G.hist.reduce((a,b,i)=>a+b*i,0)/tot, va=G.hist.reduce((a,b,i)=>a+b*(i-mu)*(i-mu),0)/tot, sg=Math.sqrt(va)||1;
+  const peak=Math.max(...G.hist)/tot; x.beginPath(); for(let k=0;k<=80;k++){const ib=k/80*(nb-1), gy=Math.exp(-((ib-mu)**2)/(2*sg*sg))/(sg*2.5066)/peak, px=cx+(ib-(nb-1)/2)*sc2, py=yb-Math.min(1.1,gy)*(yb-G.bot-14); k?x.lineTo(px,py):x.moveTo(px,py);}
+  x.strokeStyle='rgba(230,233,239,.75)'; x.lineWidth=1.3; x.shadowColor='#fff'; x.shadowBlur=6; x.stroke(); x.shadowBlur=0; x.lineWidth=1;
+  x.font='7.5px monospace'; x.fillStyle='#8C95A8'; x.textAlign='center'; x.fillText('μ '+(-1.5+(mu+.5)*5/nb).toFixed(2)+'R · σ '+(sg*5/nb).toFixed(2)+'R · n '+(D.tm?fm(D.tm.sims,0):'—')+' · ¼K '+(D.tm?(D.tm.kelly*25).toFixed(2)+'%':'—'),cx,G.top-14);
+  x.strokeStyle='rgba(242,210,122,.5)'; x.setLineDash([3,3]); const z0=cx+(3-(nb-1)/2)*sc2; x.beginPath(); x.moveTo(z0,G.top); x.lineTo(z0,yb); x.stroke(); x.setLineDash([]);
   x.font='7.5px monospace'; x.fillStyle='#566074'; x.textAlign='center'; x.fillText('−1.5R',cx-(nb-1)/2*sc2,yb+10); x.fillText('0R',z0,yb+10); x.fillText('+3.5R',cx+(nb-1)/2*sc2,yb+10);
   // Barra vertical P(TP1)
   const p=(D.prob||0)/100, bx=w-20, by0=40, by1=yb; x.fillStyle='#161b27'; x.beginPath(); x.roundRect(bx,by0,10,by1-by0,5); x.fill();
@@ -417,9 +452,10 @@ function drawGal(t,dt){const {x,w,h}=cv.cGal; x.clearRect(0,0,w,h); const G=GAL,
 function tminus(){const s=Math.floor(Date.now()/1000)%300, r=300-s; return 'T-'+Math.floor(r/60)+':'+String(r%60).padStart(2,'0');}
 // --- CORDILLERAS DE SEÑALES ---
 function drawRid(t){const {x,w,h}=cv.cRid; x.clearRect(0,0,w,h); const R=D.ridges||[]; if(!R.length){x.fillStyle='#566074'; x.font='10px monospace'; x.textAlign='center'; x.fillText('CORRE LA MESA PARA VER LAS SEÑALES',w/2,h/2); return;}
-  const LW=Math.min(150,w*.3), L=10, Rr=w-LW-10, top=62, bot=h-24, n=R[0].v.length, step=(bot-top)/(R.length+1.5), amp=step*2.4;
+  const LW=Math.min(150,w*.3), L=10, Rr=w-LW-10, top=66, bot=h-24, n=R[0].v.length, step=(bot-top)/(R.length+1.5), amp=step*2.4;
   const hot=R.reduce((b,r,i)=>r.now>R[b].now?i:b,0); const reveal=Math.min(1,t/1.8);
-  x.font='8.5px monospace'; x.textAlign='left'; x.fillStyle='#8C95A8'; x.fillText(R.filter(r=>r.now>.6).length+'/'+R.length+' ACTIVAS · CRESTA: '+R[hot].name.toUpperCase(),12,46);
+  const hd=[[R.filter(r=>r.now>.6).length+'/'+R.length,'ACTIVAS','#E6E9EF'],[String(R.filter(r=>r.now>.8).length),'CALIENTES','#F5A623'],[R[hot].name.slice(0,12).toUpperCase()+' '+R[hot].now.toFixed(2),'CRESTA','#F2D27A']];
+  hd.forEach((q,i)=>{const hx=12+i*(i===2?78:74); x.textAlign='left'; x.font='800 13px monospace'; x.fillStyle=q[2]; x.fillText(q[0],hx,42); x.font='7.5px monospace'; x.fillStyle='#566074'; x.fillText(q[1],hx,52);});
   R.forEach((r,i)=>{const base=top+(i+1.2)*step, c=i===hot?GOLD:(i%2?'#B388FF':'#F5A623'); const m=Math.floor(n*reveal);
     x.beginPath(); x.moveTo(L,base); for(let k=0;k<m;k++){const px=L+(Rr-L)*k/(n-1), py=base-r.v[k]*amp*(1+(i===hot?.06*Math.sin(t*3+k*.2):0)); x.lineTo(px,py);} x.lineTo(L+(Rr-L)*(m-1)/(n-1),base); x.closePath();
     x.fillStyle='#080b12'; x.fill(); x.strokeStyle=rgba(c,i===hot?1:.75); x.lineWidth=i===hot?1.8:1.1; if(i===hot){x.shadowColor=GOLD; x.shadowBlur=12;} x.stroke(); x.shadowBlur=0;});
@@ -428,11 +464,46 @@ function drawRid(t){const {x,w,h}=cv.cRid; x.clearRect(0,0,w,h); const R=D.ridge
   x.fillStyle=GOLD; x.font='700 8px monospace'; x.fillText('CRESTA · '+R[hot].name.slice(0,14).toUpperCase(),Rr-112,hb-11);
   R.forEach((r,i)=>{const y=top+i*((bot-top)/R.length)+8; x.fillStyle=i===hot?GOLD:'#8C95A8'; x.font='8px monospace'; x.textAlign='left'; x.fillText(r.name.slice(0,15),w-LW+2,y);
     x.fillStyle='#161b27'; x.fillRect(w-LW+2,y+3,LW-14,4); x.fillStyle=i===hot?GOLD:(r.now>.6?'#F5A623':'#B388FF'); x.fillRect(w-LW+2,y+3,(LW-14)*r.now*(.95+.05*Math.sin(t*2+i)),4);});}
+// --- Actividad de la traza (ms por agente) ---
+function drawAct(t){const o=cv.cAct; if(!o) return; const {x,w,h}=o; x.clearRect(0,0,w,h); const v=D.agents.map(a=>a.ms||0), mx=Math.max(10,...v);
+  x.strokeStyle='rgba(148,163,184,.15)'; x.strokeRect(.5,.5,w-1,h-1); x.beginPath(); v.forEach((m,i)=>{const px=4+(w-8)*i/(v.length-1), py=h-5-(m/mx)*(h-12)*(.85+.15*Math.sin(t*3+i)); i?x.lineTo(px,py):x.moveTo(px,py);});
+  x.strokeStyle='#5AC8FA'; x.lineWidth=1.4; x.stroke(); x.lineTo(w-4,h-4); x.lineTo(4,h-4); x.closePath(); x.fillStyle='rgba(90,200,250,.12)'; x.fill();
+  x.font='7px monospace'; x.fillStyle='#566074'; x.textAlign='right'; x.fillText('ACTIVIDAD · MS',w-4,9);}
+// --- Agentes que viajan a su panel ---
+const STATION={SPOTTER:['tapeP',.33,.62],PRIOR:['ridP',.42,.5],PRICER:['galP',.55,.32],EDGE:['tapeP',.88,.52],KELLY:['pnlP',.72,.58],TAKER:['tapeP',.88,.32],CLOSER:['traceP',.62,.66]};
+function rel(id){const T0=$('T').getBoundingClientRect(), r=$(id).getBoundingClientRect(); return {x:r.left-T0.left,y:r.top-T0.top,w:r.width,h:r.height};}
+function drawFly(t){const o=cv.cFly; const {x,w,h}=o; x.clearRect(0,0,w,h); const orb=rel('orbP');
+  const crew=D.agents.map((a,i)=>({a,i})).filter(q=>q.a.status!=='idle'); const team=crew.length?crew:D.agents.map((a,i)=>({a,i}));
+  const CYC=3.6, STAG=1.25; team.forEach((q,k)=>{const a=q.a, st=STATION[a.key]; if(!st) return; const ph=((t-k*STAG)%(CYC*team.length*STAG/ (team.length*STAG/CYC)) );
+    const local=(t-k*STAG)-Math.floor((t-k*STAG)/(STAG*team.length))*(STAG*team.length); if(local<0||local>CYC) return;
+    const hm=HOME[q.i]||[orb.w/2,orb.h*.6]; const H=[orb.x+hm[0],orb.y+hm[1]]; const pr=rel(st[0]); const S=[pr.x+pr.w*st[1],pr.y+pr.h*st[2]];
+    let px,py,phase; const fly=.95, back=.8, stay=CYC-fly-back;
+    const arc=(A,B,u)=>{const e=u<.5?4*u*u*u:1-Math.pow(-2*u+2,3)/2, mx=(A[0]+B[0])/2, my=Math.min(A[1],B[1])-120; return [(1-e)*(1-e)*A[0]+2*(1-e)*e*mx+e*e*B[0],(1-e)*(1-e)*A[1]+2*(1-e)*e*my+e*e*B[1]];};
+    if(local<fly){[px,py]=arc(H,S,local/fly); phase=0;} else if(local<fly+stay){px=S[0]+Math.sin(t*2.2+k)*6; py=S[1]+Math.cos(t*2.8+k)*4; phase=1;} else {[px,py]=arc(S,H,(local-fly-stay)/back); phase=2;}
+    const c=a.color, sc=a.status==='pass'?OK:a.status==='block'?BAD:a.status==='info'?a.color:'#8C95A8';
+    // Estela
+    if(phase!==1){for(let j=1;j<10;j++){const lu=Math.max(0,(phase===0?local:local-fly-stay)-j*.025), q2=phase===0?arc(H,S,lu/fly):arc(S,H,lu/back);
+      x.fillStyle=rgba(c,.5*(1-j/10)); x.beginPath(); x.arc(q2[0],q2[1],7*(1-j/12),0,6.283); x.fill();}}
+    // Panel iluminado mientras trabaja
+    if(phase===1){const g=Math.min(1,(local-fly)/.3)*Math.min(1,(fly+stay-local)/.3); x.strokeStyle=rgba(c,.75*g); x.lineWidth=2; x.shadowColor=c; x.shadowBlur=22*g;
+      x.beginPath(); x.roundRect(pr.x+1,pr.y+1,pr.w-2,pr.h-2,12); x.stroke(); x.shadowBlur=0; x.lineWidth=1;
+      x.strokeStyle=rgba(c,.55*g); x.setLineDash([3,4]); x.beginPath(); x.arc(px,py,26+Math.sin(t*4)*3,0,6.283); x.stroke(); x.setLineDash([]);
+      for(let r=0;r<2;r++){const kk=((t*1.2+r*.5)%1); x.strokeStyle=rgba(c,(1-kk)*.6*g); x.beginPath(); x.arc(px,py,16+kk*34,0,6.283); x.stroke();}}
+    // Avatar
+    const R=15; const gl=x.createRadialGradient(px,py,1,px,py,R*2.8); gl.addColorStop(0,rgba(c,.55)); gl.addColorStop(1,rgba(c,0)); x.fillStyle=gl; x.beginPath(); x.arc(px,py,R*2.8,0,6.283); x.fill();
+    const b=x.createRadialGradient(px-5,py-6,1,px,py,R); b.addColorStop(0,'#fff'); b.addColorStop(.4,c); b.addColorStop(1,rgba(c,.5)); x.fillStyle=b; x.beginPath(); x.arc(px,py,R,0,6.283); x.fill();
+    x.strokeStyle=sc; x.lineWidth=2; x.beginPath(); x.arc(px,py,R+3,0,6.283); x.stroke(); x.lineWidth=1;
+    x.font='800 9px monospace'; x.fillStyle='#05070b'; x.textAlign='center'; x.textBaseline='middle'; x.fillText(a.code,px,py+.5); x.textBaseline='alphabetic';
+    // Etiqueta con la tarea y el dato
+    if(phase===1){const l1=a.key+' · '+(a.task||''), l2=(a.status==='block'?'✕ ':'')+(a.value||''); x.font='800 9px monospace'; const lw=Math.max(x.measureText(l1).width,x.measureText(l2).width)+18;
+      const lx=Math.min(w-lw-4,Math.max(4,px-lw/2)), ly=py-58; x.fillStyle='rgba(5,7,11,.92)'; x.strokeStyle=rgba(c,.85); x.beginPath(); x.roundRect(lx,ly,lw,32,8); x.fill(); x.stroke();
+      x.fillStyle=c; x.textAlign='left'; x.fillText(l1,lx+9,ly+13); x.font='9px monospace'; x.fillStyle=a.status==='block'?BAD:'#E6E9EF'; x.fillText(l2,lx+9,ly+26);
+      x.strokeStyle=rgba(c,.6); x.beginPath(); x.moveTo(px,py-R-3); x.lineTo(px,ly+32); x.stroke();}});}
 // --- Bucle ---
 initOrb(); initGal(); let prev=performance.now(), lastSec=-1;
 function frame(now){const t=Math.max(0,(now-t0)/1000), dt=Math.max(0,Math.min(.05,(now-prev)/1000)); prev=now; $('clk').textContent=new Date().toISOString().slice(11,19);
   const s=Math.floor(Date.now()/1000)%300; if(s!==lastSec){lastSec=s; $('tmin').textContent=tminus();
     $('tdash').innerHTML=[...Array(30)].map((_,i)=>'<div style="flex:1;height:5px;border-radius:2px;background:'+(i<s/10?'#F2D27A':'#1b2130')+'"></div>').join('');}
-  drawPnl(t); drawTape(t); drawOrb(t); drawPipe(t); drawGal(t,dt); drawRid(t); requestAnimationFrame(frame);}
+  drawPnl(t); drawTape(t); drawOrb(t); drawPipe(t); drawGal(t,dt); drawRid(t); drawAct(t); drawFly(t); requestAnimationFrame(frame);}
 requestAnimationFrame(frame);
 </script></body></html>"""
