@@ -168,6 +168,71 @@ señal, tortuga, cerebro). No uses logos, mascotas ni nombres de otras empresas.
 
 ---
 
+## 4B. ANIMACIONES EXACTAS: IGUAL QUE EL VIDEO Y MEJORADAS
+
+Cada animación tiene un motivo (un dato real o una decisión real). Tiempos en segundos.
+
+### Igual que el video
+
+1. **Núcleo:** esfera blanca/plateada con brillo especular arriba-izquierda; respira (escala 1.00↔1.02, ciclo 4 s);
+   halo radial del color del veredicto que late cada 2.4 s; anillo fino girando alrededor (1 vuelta cada 5 s).
+2. **Anillos orbitales:** 10–14 elipses 3D inclinadas con ángulos distintos; cada una rota a su velocidad
+   (0.12–0.35 rad/s, alternando sentido); las mitades traseras al 30% de opacidad y las delanteras al 55%, con
+   mezcla aditiva para que donde se cruzan se vean más brillantes.
+3. **Agentes en órbita:** cada personaje viaja sobre su anillo; cuando pasa por detrás del núcleo queda tapado y
+   más chico (perspectiva), y por delante se ve más grande. Los ojos parpadean cada ~3.6 s y miran hacia el núcleo.
+4. **Curvas de energía del radar:** de cada blip del radar sale una curva Bézier hacia el núcleo; por cada curva
+   viaja una chispa brillante (1 recorrido cada 4 s, desfasadas).
+5. **Barrido del radar:** cono verde que gira (1 vuelta cada 5.7 s); el blip que toca el barrido se enciende y
+   crece 1.5×.
+6. **Rayos ramificados:** del núcleo a un agente al azar (~10 por segundo como máximo) y entre agentes vecinos; cada
+   rayo tiene 9 segmentos con desvío aleatorio, 1–2 ramas cortas, glow del color del agente, una línea blanca
+   delgada encima, y se desvanece en ~0.18 s.
+7. **Constelación:** 60–70 nodos en una esfera más grande que rota lento (0.2 rad/s); líneas finas entre vecinos y
+   pulsos de luz que viajan por algunas líneas.
+8. **Ticket saltando:** etiqueta dorada que salta de un agente al siguiente en el orden de la cadena (0.6 s por
+   salto, curva en arco con easing), con estela de 8 puntos.
+9. **Libro de órdenes:** las barras de bids/asks crecen y encogen con transición de 300 ms cada vez que llega un
+   dato nuevo; el spread parpadea suave en dorado.
+10. **Velas:** la vela en formación se redibuja en vivo; marcadores de entrada/SL/TP1 con líneas punteadas.
+11. **Galton:** bolitas doradas caen desde arriba cada ~70 ms, rebotan en los clavos con física simple
+    (gravedad + desvío izquierda/derecha según el histograma real) y se apilan en sus barras.
+12. **Marquesinas:** el ticker y el live wire corren a velocidad constante (sin saltos al reiniciar).
+13. **Números:** cada número que cambia hace conteo animado (600 ms, ease-out) y parpadea su color (verde si sube,
+    rojo si baja) una vez.
+14. **Agentes que vuelan a su panel:** por turnos (uno sale cada ~1.2 s): despega del anillo, vuela en arco
+    (0.95 s, ease-in-out cúbico) dejando estela, aterriza en su panel, camina sobre su gráfica 2–3 s con haz de
+    escaneo y burbuja de pensamiento, el panel se ilumina con su color, y regresa en arco (0.8 s).
+
+### Mejoras sobre el video
+
+1. **Profundidad real:** parallax leve con el mouse (los anillos y las estrellas se mueven a distinta velocidad)
+   y desenfoque suave en lo que está detrás del núcleo.
+2. **Bloom/glow de calidad:** halo suave en rayos, núcleo y agentes, pre-renderizado en un canvas fuera de pantalla
+   para no gastar CPU.
+3. **Reacción a eventos reales (lo más importante):**
+   - Cuando un agente **aprueba**: su personaje sonríe, se ilumina verde y manda un pulso de luz al núcleo.
+   - Cuando **bloquea**: ✕ en los ojos, anillo rojo punteado girando, una sacudida corta (0.3 s) y el rayo hacia el
+     núcleo sale rojo.
+   - Cuando la mesa da **veredicto**: onda expansiva desde el núcleo del color del veredicto (verde/ámbar/rojo) y
+     la tarjeta Mission Control hace un destello.
+   - Cuando **Grok** llama una herramienta por MCP: su personaje lanza un rayo lila al agente correspondiente y ese
+     agente "despierta".
+   - Cuando se **abre una operación en papel**: el ticket viaja del TAKER al panel MESA PNL y aparece la línea de
+     entrada en THE TAPE.
+4. **Partículas:** chispas que salen del agente que acaba de decidir; polvo de estrellas que fluye lento hacia el
+   núcleo.
+5. **Transiciones suaves de datos:** las curvas (capital, cordilleras, campana) se interpolan entre estados en vez
+   de saltar.
+6. **Estados vivos:** si un dato tiene más de 30 s, su número se vuelve gris con un relojito; si una fuente cae,
+   franja roja "degradado" en el panel; nunca una animación finge datos que no llegan.
+7. **Rendimiento:** 60 fps en una PC normal; si baja de 40 fps, reducir automáticamente partículas y rayos;
+   pausar todo lo que no está en pantalla.
+8. **Accesibilidad:** si el sistema tiene "reducir movimiento", bajar las animaciones al mínimo (sin perder datos).
+
+### Lo que NO se anima
+- Ganar dinero: sin confeti, fuego, sonidos ni "rachas". El P&L solo hace su conteo y su color.
+
 ## 5. REGLAS QUE NO SE ROMPEN
 
 - **Datos reales o "n/a"**: nada de números de relleno, ni en DEMO (en DEMO se rotula "DEMO · datos de prueba").
