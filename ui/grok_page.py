@@ -126,84 +126,6 @@ def _controls(br) -> None:
                + (stt.get("tunnel") or "sin túnel"))
 
 
-def _team(svc, br) -> None:
-    """El equipo y la última ronda. Negro y dorado: el tema de la terminal ya es ese."""
-    from engine.fgview.grok_team import TEAM, fmt_sum, fmt_vote
-
-    st.markdown("### 🧠 Equipo Grok · 11 agentes")
-    st.caption("Cada agente responde una pregunta. Seis votan. G-JUDGE suma y decide. G-EXEC solo anota, o abre en papel. "
-               "Un dato que no llegó se queda en n/a.")
-    last = None
-    try:
-        last = br.team.latest()
-    except Exception:  # noqa: BLE001
-        last = None
-    votes = (last or {}).get("votos") or {}
-    judge = (last or {}).get("juez") or {}
-    lines = ["| Agente | Pregunta | Última ronda |", "|---|---|---|"]
-    for meta in TEAM:
-        key = meta["key"]
-        vote = votes.get(key) or {}
-        if vote:
-            cell = f"`{fmt_vote(vote.get('voto', 0))}` · {(vote.get('linea') or 'n/a').replace('|', '/')}"
-        elif key == "G-JUDGE" and judge:
-            cell = f"**{judge.get('veredicto') or 'n/a'}** · suma {fmt_sum(int(judge.get('suma') or 0))}"
-        elif key == "G-EXEC" and last:
-            cell = last.get("ejecucion") or "n/a"
-        elif key == "G-RISK" and last:
-            cell = "plan de la tarjeta" if last.get("plan") else "plan: n/a"
-        elif key == "G-SCOUT" and last:
-            cell = last.get("cripto") or "n/a"
-        elif key == "G-WATCH":
-            cell = "fg_posiciones · fg_resultados · fg_resumen"
-        else:
-            cell = "todavía sin ronda"
-        lines.append(f"| **{key}** | {meta['pregunta']} | {cell} |")
-    st.markdown("\n".join(lines))
-    c1, c2, c3, c4 = st.columns([1.3, 1, 1.6, 1], vertical_alignment="bottom")
-    sym = c1.text_input("Cripto de la ronda", value="DEMO", key="gk_round_sym",
-                        help="DEMO usa datos sintéticos. Un nombre real lee Binance.")
-    dire = c2.selectbox("Dirección", ["Auto", "LONG", "SHORT"], key="gk_round_dir")
-    paper = c3.checkbox("Abrir en papel si G-JUDGE aprueba", value=False, key="gk_round_paper")
-    if c4.button("Correr ronda", type="primary", key="gk_round_go", width="stretch"):
-        with st.spinner("La mesa calcula y el equipo vota…"):
-            try:
-                br.ronda(sym, dire, abrir_en_papel=paper)
-            except Exception as exc:  # noqa: BLE001
-                st.error(f"La ronda no se pudo cerrar: {exc}")
-            else:
-                st.rerun()
-    if last and last.get("reporte"):
-        st.code(last["reporte"], language="text")
-        if (judge.get("veredicto") or "") != "APRUEBA":
-            st.caption("Nada aprobado esta ronda. Esperar también es operar bien.")
-    else:
-        st.caption("Todavía no hay un reporte. Corre una ronda o pídesela a Grok con fg_ronda.")
-    with st.expander("Revisión · ¿cómo vamos?"):
-        if st.button("Medir al equipo", key="gk_rev_go"):
-            try:
-                st.session_state["gk_rev"] = br.revision()
-            except Exception as exc:  # noqa: BLE001
-                st.error(str(exc))
-        rev = st.session_state.get("gk_rev")
-        if rev:
-            st.write(rev.get("sugerencia") or "n/a")
-            st.caption(f"Acertó más: {rev.get('acerto_mas') or 'n/a'} · se equivocó más: "
-                       f"{rev.get('equivoco_mas') or 'n/a'} · rondas con resultado: {rev.get('muestras', 0)}")
-            st.code(rev.get("resumen_semana") or "n/a", language="text")
-            st.caption(rev.get("nota") or "")
-    desk = getattr(svc, "desk", None)
-    registry = getattr(desk, "agents", None) if desk is not None else None
-    if registry is not None:
-        with st.expander("Fichas de la mesa · para diseñar un agente nuevo"):
-            names = [s.name for s in registry.specs()]
-            picked = st.selectbox("Agente", names, key="gk_ficha")
-            st.code(registry.ficha(picked), language="text")
-            st.caption("Para sumar uno: una ficha (AGENTE, PREGUNTA, DATOS, CÁLCULO, VOTO, BLOQUEA SI, NO HACE, "
-                       "LUGAR EN LA CADENA, CÓMO PROBARLO, PERSONAJE) y desk.agents.add(...). "
-                       "Puede aprobar, informar o frenar. No sube el riesgo ni quita el stop.")
-
-
 def _audit_panel(svc, br) -> None:
     """Pausa, salud y tamaño. Los botones no escriben rules.md."""
     from engine.fgview.audit import health, screen_state
@@ -252,19 +174,11 @@ def _connection(br) -> None:
     st.markdown(f"### 🔌 Servidor MCP · {'🟢 ENCENDIDO' if on else '⚪ apagado'}")
     with st.expander("📘 Tutorial: cómo conectar FG VIEW con los agentes de Grok (MCP)", expanded=not stt.get("tunnel")):
         st.markdown(TUTORIAL)
-    c = st.columns([1, 1, 2.2], vertical_alignment="bottom")
+    c = st.columns([1, 2.2], vertical_alignment="bottom")
     port = c[0].number_input("Puerto", 1024, 65535, int(stt["port"]), key="gk_port", disabled=on)
-    if not on:
-        if c[1].button("▶ Encender servidor", type="primary", key="gk_start", width="stretch"):
-            try:
-                st.toast(br.start(int(port)))
-            except Exception as exc:  # noqa: BLE001
-                st.error(f"No se pudo encender: {exc}")
-            st.rerun()
-    elif c[1].button("⏹ Apagar servidor", key="gk_stop", width="stretch"):
-        br.stop()
-        st.rerun()
-    tunnel = c[2].text_input("Dirección del túnel (https://…trycloudflare.com)", value=stt.get("tunnel", ""), key="gk_tunnel",
+    if int(port) != int(stt["port"]):
+        stt = br.set(port=int(port))
+    tunnel = c[1].text_input("Dirección del túnel (https://…trycloudflare.com)", value=stt.get("tunnel", ""), key="gk_tunnel",
                              placeholder="https://algo-raro.trycloudflare.com")
     if tunnel != stt.get("tunnel", ""):
         stt = br.set(tunnel=tunnel.strip())
