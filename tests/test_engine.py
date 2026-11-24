@@ -814,6 +814,7 @@ def _desk_forced(fgdb, p_tp1=70.0, ev=2.0, kelly=0.08):
 
     desk = fgdb.desk
     desk.min_prior = 0
+    desk.min_prob = 45  # La base histórica de los datos DEMO cambia con la hora: no depender de ella
     orig = desk.spot
     desk.spot = lambda *a, **k: (lambda r: (AgentResult("SPOTTER", "pass", r[0].headline),) + r[1:])(orig(*a, **k))
     tm = TimeMachineResult(sims=100_000, p_tp1=p_tp1, p_tp2=40, p_tp3=20, p_sl=100 - p_tp1, p_time=0, p_liq=0, ev=ev,
@@ -830,12 +831,12 @@ def test_desk_full_chain_approves_and_sizes_with_kelly(fgdb):
     agents = [r.agent for r in dec.results]
     from engine.fgview.desk import AGENTS
 
-    assert agents == [a for a in AGENTS if a != "ANALYST"] and len(AGENTS) == 13  # La IA está apagada
+    assert agents == list(AGENTS) and len(AGENTS) == 12
     assert dec.approved and dec.sent and fgdb.positions.all()
     table, _ = fgdb.planner.budget.rule(1000)
     assert dec.risk_pct == pytest.approx(min(table, 0.08 * 0.25 * 100))  # ¼ Kelly, nunca más que la tabla
     assert dec.ticket.post_only and dec.ticket.stop_problem() is None and "APRUEBA" in dec.summary()
-    assert dec.fan and len(dec.fan["paths"]) == 70 and len(dec.trace()) >= 12
+    assert dec.fan and len(dec.fan["paths"]) == 70 and len(dec.trace()) == 12
 
 
 def test_desk_blocks_on_negative_edge_and_low_probability(fgdb):
@@ -914,7 +915,7 @@ def test_desk_terminal_payload_and_html(fgdb):
 
     dec = _desk_forced(fgdb).run("DEMO/USDT", "demo", 1000)
     pay = build_payload(fgdb, dec, [("SOL/USDT", 80.0, "")], 1000)
-    assert len(pay["agents"]) == 13 and pay["tape"]["vp"]["v"] and len(pay["feeds"]) == 6
+    assert len(pay["agents"]) == 12 and pay["tape"]["vp"]["v"] and len(pay["feeds"]) == 6
     assert pay["tm"] and pay["ridges"] and pay["verdict"] == "approved"
     assert all(a["task"] and a["value"] for a in pay["agents"])  # Cada agente sabe a qué panel va y qué dato lleva
     assert "marks" in pay["tape"] and pay["tape"]["va"] and pay["hot"]
@@ -1025,63 +1026,35 @@ def test_hub_payload_and_new_critters(fgdb):
     pay = hub_payload(dec)
     assert [a["key"] for a in pay["agents"]] == list(AGENTS) and pay["verdict"] in ("OPERAR", "ESPERAR", "NO OPERAR")
     assert "GUARD" in [r.agent for r in dec.results] and dec.ticket.max_hold_min in (30, 45)
-    assert "drawCritter" in hub_html(dec, "<svg/>") and "13 AGENTES" in hub_html(None, "<svg/>")
+    assert "drawCritter" in hub_html(dec, "<svg/>") and "12 AGENTES" in hub_html(None, "<svg/>")
     for k in ("WHALE", "FLOW", "FUNDING", "GATE", "GUARD"):
         assert f"key==='{k}'" in CRITTERS_JS
 
 
-class _FakeResp:
-    def __init__(self, payload, code=200):
-        self.status_code, self._p, self.text = code, payload, json.dumps(payload)
 
-    def json(self):
-        return self._p
-
-
-class _FakeXAI:
-    def __init__(self, verdict):
-        self.verdict, self.calls = verdict, []
-
-    def post(self, url, json=None, timeout=None, headers=None):  # noqa: A002 - firma de requests.post
-        self.calls.append(json)
-        body = {"veredicto": self.verdict, "confianza": 72, "resumen": "Prueba", "razones": ["a"], "riesgos": ["b"]}
-        import json as _j
-        return _FakeResp({"choices": [{"message": {"content": _j.dumps(body)}}],
-                          "usage": {"prompt_tokens": 3000, "completion_tokens": 1000}})
-
-
-def test_ai_analyst_grok_only_brakes(fgdb):
-    from engine.fgview.analyst import AIAnalyst
-
-    for verdict, expect in (("APRUEBA", "OPERAR"), ("PRECAUCION", "ESPERAR"), ("VETA", "NO OPERAR")):
-        desk = _desk_forced(fgdb)
-        fake = _FakeXAI(verdict)
-        desk.analyst = AIAnalyst(fgdb.db if hasattr(fgdb, "db") else None, http=fake)
-        desk.analyst.set(enabled=True, provider="grok", daily_cap=5.0)
-        dec = desk.run("DEMO/USDT", "demo", 1000)
-        a = next(r for r in dec.results if r.agent == "ANALYST")
-        assert dec.verdict == expect, (verdict, dec.verdict, a.headline)
-        assert fake.calls and fake.calls[0]["model"] == "grok-4.7"
-        assert fake.calls[0]["response_format"]["type"] == "json_schema"
-        if verdict != "APRUEBA":
-            assert dec.risk_pct <= desk.OPERABLE_RISK  # Frenar nunca sube el riesgo
-        # Segunda corrida: reutiliza la opinión (no gasta otra llamada)
-        desk.run("DEMO/USDT", "demo", 1000)
-        assert len(fake.calls) == 1
-        assert desk.analyst.spent_today() == pytest.approx((3000 * 2 + 1000 * 6) / 1e6)
-
-
-def test_ai_analyst_off_without_key_and_cap(fgdb, monkeypatch):
-    from engine.fgview.analyst import AIAnalyst
-
-    monkeypatch.delenv("XAI_API_KEY", raising=False)
-    ai = AIAnalyst(None)
-    ai.set(enabled=True)
-    assert not ai.active() and "XAI_API_KEY" in ai.test_connection()
-    desk = _desk_forced(fgdb)
-    fake = _FakeXAI("APRUEBA")
-    desk.analyst = AIAnalyst(None, http=fake)
-    desk.analyst.set(enabled=True, daily_cap=0.05)  # Menos que una llamada estimada
-    dec = desk.run("DEMO/USDT", "demo", 1000)
-    a = next(r for r in dec.results if r.agent == "ANALYST")
-    assert a.status == "info" and "Tope diario" in a.headline and not fake.calls
+def test_grok_mcp_bridge_tools_and_paper_only(fgdb):
+    br = fgdb.grok
+    tok = br.state()["token"]
+    assert len(tok) > 20 and br.local_url().endswith(tok)
+    _desk_forced(fgdb)
+    d = br.run_desk("DEMO")
+    assert d["veredicto_mesa"] in ("OPERAR", "ESPERAR", "NO OPERAR") and len(d["agentes"]) == 12
+    assert br.agent("PRICER")["agente"] == "PRICER" and "error" in br.agent("NADIE")
+    out = br.verdict("VETA", 80, "no me gusta")
+    assert out["ok"] and br.state()["verdicts"][-1]["veredicto"] == "VETA"
+    assert "error" in br.verdict("COMPRA", 50, "x")
+    # Solo abre en papel con APRUEBA y si la mesa no dijo NO OPERAR
+    before = len(fgdb.positions.all())
+    msg = br.verdict("APRUEBA", 70, "ok", abrir_en_papel=True)["mensaje"]
+    if br.last_dec.verdict == "NO OPERAR":
+        assert "NO OPERAR" in msg and len(fgdb.positions.all()) == before
+    else:
+        assert "PAPEL" in msg.upper()
+    tools = [e["tool"] for e in br.state()["events"]]
+    assert "fg_correr_mesa" in tools and "grok_veredicto" in tools
+    srv = br.build()
+    assert srv.name.startswith("FG VIEW")
+    old = tok
+    assert br.new_token() != old
+    br.set(tunnel="https://abc.trycloudflare.com/")
+    assert br.public_url() == f"https://abc.trycloudflare.com/mcp/{br.state()['token']}"

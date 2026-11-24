@@ -15,7 +15,7 @@ Personajes de los agentes de FG DESK (originales de FG VIEW, dibujados en canvas
     FUNDING  moneda que gira con borde dentado                       (lima)
     GATE     señal octagonal con pluma de barrera (sube si pasa)     (rojo)
     GUARD    tortuga con caparazón hexagonal                         (índigo)
-    ANALYST  cerebro flotante con chispas neuronales (IA real)       (lila claro)
+    GROK     cerebro flotante con chispas neuronales (Grok vía MCP)  (lila claro)
 
 Expresiones: pass = sonríe · block = ceño fruncido y X roja · info = neutral · idle = dormido.
 Los ojos parpadean y miran hacia donde trabajan.
@@ -126,7 +126,7 @@ function drawCritter(x,key,px,py,s,color,t,mood,lx,ly){
     hx(px,py-s*.45,s*.28); hx(px-s*.5,py-s*.15,s*.24); hx(px+s*.5,py-s*.15,s*.24);
     const fx=px, fy=py+s*.38; x.fillStyle=_shade(color,1.15); x.beginPath(); x.ellipse(fx,fy,s*.62,s*.42,0,0,6.283); x.fill();
     _eye(x,fx-s*.24,fy-s*.06,s*.17,t,mood,lx,ly,11); _eye(x,fx+s*.24,fy-s*.06,s*.17,t,mood,lx,ly,11.2); _brows(x,fx-s*.24,fx+s*.24,fy-s*.06,s*.17,mood,0); _mouth(x,fx,fy+s*.22,s*.26,mood);
-  } else if(key==='ANALYST'){ // Cerebro flotante con chispas neuronales
+  } else if(key==='GROK'){ // Cerebro flotante con chispas neuronales
     for(let k=0;k<6;k++){const a=t*1.6+k*1.047, rr=s*1.35+Math.sin(t*3+k)*s*.08, sx=px+Math.cos(a)*rr, sy=py+Math.sin(a)*rr*.75;
       x.strokeStyle=_rgba('#FFF4C8',.35+.35*Math.sin(t*5+k)); x.lineWidth=Math.max(1,s*.05); x.beginPath(); x.moveTo(px+Math.cos(a)*s*.9,py+Math.sin(a)*s*.7); x.lineTo(sx,sy); x.stroke();
       x.fillStyle=_rgba('#FFF4C8',.9); x.beginPath(); x.arc(sx,sy,s*.08,0,6.283); x.fill();}

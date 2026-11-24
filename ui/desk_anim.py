@@ -402,7 +402,7 @@ def kpi_html(items: list[tuple[str, str, str]], height: int = 74) -> str:
   <div id="clk" style="font-size:19px;font-weight:700;color:#ECE8DC;white-space:nowrap">--:--:--</div>
   <div class="utc" style="font-size:10px;color:#5D6577;letter-spacing:.14em">UTC</div>
   <div class="onl" style="font-size:10px;letter-spacing:.12em;color:#3DDC97;border:1px solid rgba(61,220,151,.35);padding:5px 9px;border-radius:8px;white-space:nowrap">
-   <span style="animation:p 1.4s infinite">●</span> 13 AGENTES ONLINE</div></div>
+   <span style="animation:p 1.4s infinite">●</span> 12 AGENTES ONLINE</div></div>
 </div>
 <style>@keyframes p{{0%,100%{{opacity:1}}50%{{opacity:.25}}}}
 @media (max-width:1180px){{.k2,.k4,.utc{{display:none}}}} @media (max-width:980px){{.k5,.k3{{display:none}}}}
@@ -417,7 +417,7 @@ def _empty(title: str, text: str, height: int) -> str:
 
 
 def pipeline_html(decision, height: int = 96) -> str:
-    """Barra del pipeline: los 13 agentes en fila con pulsos que viajan de etapa en etapa."""
+    """Barra del pipeline: los 12 agentes en fila con pulsos que viajan de etapa en etapa."""
     data = json.dumps(_agents_payload(decision))
     return (r"""
 <div id="w" style="position:relative;height:__H__px;border-radius:14px;overflow:hidden;background:#06080d;

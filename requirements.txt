@@ -40,4 +40,4 @@ backtrader==1.9.78.123    # Motor de backtesting alternativo (tests/backtest_run
 pytest==9.2.0
 httpx==0.28.1             # Requerido por el TestClient de FastAPI en los tests
 openpyxl==3.1.5          # Revisor de historial: leer el Excel exportado de Binance
-anthropic>=2.13
+mcp>=2.3,<3

@@ -42,6 +42,7 @@ from ui.easy_tab import render_easy, render_glossary  # noqa: E402
 from ui.ladder_tab import render_ladder  # noqa: E402
 from ui import pro_pages as ip  # noqa: E402
 from ui.desk_page import render_desk  # noqa: E402
+from ui.grok_page import render_grok  # noqa: E402
 from ui.mode import beginner, mode_switch  # noqa: E402
 from ui import sidebar_ui  # noqa: E402
 from engine.config import APP_VERSION  # noqa: E402
@@ -431,6 +432,7 @@ def build_pages(req: AnalysisRequest, layers: dict, auto: bool) -> dict[str, lis
         "Operar": [
             P(analysis, "Gráfica y señal", ":material/candlestick_chart:", "grafica", default=True),
             P(page(render_desk), "FG DESK", ":material/hub:", "desk"),
+            P(page(render_grok), "GROK DESK (MCP)", ":material/smart_toy:", "grok"),
             P(easy, "Modo fácil", ":material/auto_awesome:", "facil"),
             P(page(ip.render_time_machine), "Time Machine", ":material/history:", "time-machine"),
             P(page(ip.render_swing), "Modo Swing (noche)", ":material/dark_mode:", "swing"),

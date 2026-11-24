@@ -1,7 +1,7 @@
 """
 ui/desk_hub.py
 ==============
-«LA RED»: los 13 agentes de FG DESK alrededor del núcleo FG, con su dato en vivo.
+«LA RED»: los 12 agentes de FG DESK alrededor del núcleo FG, con su dato en vivo.
 
 Cada tarjeta muestra el personaje del agente, su nombre y lo que acaba de medir; las líneas
 llevan pulsos al núcleo (verde = aprueba, rojo = bloquea, gris = sin datos). El agente que
@@ -34,8 +34,6 @@ def hub_payload(dec) -> dict:
             val = f"ventaja {dec.edge_r:+.2f}R"
         elif r is not None and k == "KELLY" and dec.risk_pct is not None:
             val = f"riesgo {dec.risk_pct:.2f}% · {dec.plan.leverage}x" if dec.plan else f"riesgo {dec.risk_pct:.2f}%"
-        elif r is not None and k == "ANALYST":
-            val = r.headline.split(": ", 1)[-1][:40]
         elif r is not None and k in ("WHALE", "FLOW", "FUNDING") and r.value is not None:
             val = f"{_short(r)[:26]} · {r.value:+.2f}"
         agents.append({"key": k, "color": color, "status": r.status if r else "idle", "value": val, "role": role})
@@ -49,16 +47,21 @@ def hub_payload(dec) -> dict:
             "prob": dec.probability if dec else None}
 
 
-def hub_html(dec, logo_svg: str, height: int = 600) -> str:
-    return (_TEMPLATE.replace("__CRITTERS__", CRITTERS_JS).replace("__D__", json.dumps(hub_payload(dec)))
-            .replace("__LOGO__", json.dumps(logo_svg)).replace("__H__", str(height)))
+def hub_html(dec, logo_svg: str, height: int = 600, grok: bool = False, focus: list[str] | None = None,
+             grok_text: str = "") -> str:
+    """`grok=True`: modo GROK DESK (Grok orbita el núcleo y lanza rayos a los agentes que está usando por MCP)."""
+    pay = {**hub_payload(dec), "grok": grok, "focus": focus or [], "gtxt": grok_text}
+    title = ("GROK AGENTS → MCP → 12 AGENTES FG · <span style=\"color:#F5D0FE\">EN VIVO DESDE GROK.COM</span>" if grok else
+             "12 AGENTES → UN NÚCLEO FG · <span style=\"color:#F2D27A\">SEÑALES EN TIEMPO REAL</span>")
+    return (_TEMPLATE.replace("__CRITTERS__", CRITTERS_JS).replace("__D__", json.dumps(pay))
+            .replace("__LOGO__", json.dumps(logo_svg)).replace("__H__", str(height)).replace("__TITLE__", title))
 
 
 _TEMPLATE = r"""
 <div id="wrap" style="position:relative;height:__H__px;border-radius:16px;overflow:hidden;border:1px solid rgba(212,175,55,.18);
  background:radial-gradient(ellipse at 50% 50%,#101624 0%,#070a10 60%,#04060a 100%);font-family:'JetBrains Mono',ui-monospace,monospace">
  <canvas id="c" style="position:absolute;inset:0;width:100%;height:100%"></canvas>
- <div style="position:absolute;left:16px;top:12px;font-size:11px;letter-spacing:.2em;color:#C9CED8">13 AGENTES → UN NÚCLEO FG · <span style="color:#F2D27A">SEÑALES EN TIEMPO REAL</span></div>
+ <div style="position:absolute;left:16px;top:12px;font-size:11px;letter-spacing:.2em;color:#C9CED8">__TITLE__</div>
  <div id="on" style="position:absolute;right:16px;top:12px;font-size:11px;letter-spacing:.1em;color:#3DDC97"></div>
 </div>
 <style>body{margin:0;background:transparent;overflow:hidden}</style>
@@ -104,8 +107,17 @@ function frame(now){const t=(now-t0)/1000, cx=w/2, cy=h/2+12, R=Math.min(w,h)*.1
   x.fillStyle='rgba(5,7,11,.92)'; x.strokeStyle=rgba(vc,.6); x.lineWidth=1; x.beginPath(); x.roundRect(cx-lw/2,cy+R+8,lw,38,10); x.fill(); x.stroke();
   x.textAlign='center'; x.font='800 12px monospace'; x.fillStyle='#E6E9EF'; x.fillText('FG DESK',cx,cy+R+23);
   x.font='700 11px monospace'; x.fillStyle=vc; x.fillText(lab,cx,cy+R+39);
+  // Grok orbitando el núcleo y lanzando rayos a los agentes que usa por MCP
+  if(D.grok){const ga=-Math.PI/2+Math.sin(t*.45)*1.25, gx=cx+Math.cos(ga)*R*1.7, gy=cy+Math.sin(ga)*R*1.3, GC='#F5D0FE';
+    cards.filter(c=>D.focus.includes(c.a.key)).forEach((c,k)=>{if(Math.random()<.5){x.save(); x.strokeStyle=rgba(GC,.85); x.lineWidth=1.6; x.shadowColor=GC; x.shadowBlur=14; x.beginPath(); x.moveTo(gx,gy);
+      for(let s=1;s<=10;s++){const u=s/10; x.lineTo(gx+(c.cx-gx)*u+(s<10?(Math.random()-.5)*22:0), gy+(c.cy-gy)*u+(s<10?(Math.random()-.5)*22:0));} x.stroke(); x.restore();}
+      const u=((t*.8+k*.17)%1), px=gx+(c.cx-gx)*u, py=gy+(c.cy-gy)*u, g=x.createRadialGradient(px,py,0,px,py,9); g.addColorStop(0,'#fff'); g.addColorStop(1,rgba(GC,0)); x.fillStyle=g; x.beginPath(); x.arc(px,py,9,0,6.283); x.fill();});
+    const gl=x.createRadialGradient(gx,gy,4,gx,gy,46); gl.addColorStop(0,rgba(GC,.45)); gl.addColorStop(1,rgba(GC,0)); x.fillStyle=gl; x.beginPath(); x.arc(gx,gy,46,0,6.283); x.fill();
+    drawCritter(x,'GROK',gx,gy,17,GC,t,D.focus.length?'pass':'idle',(cx-gx)/120,(cy-gy)/120);
+    x.textAlign='center'; x.font='800 10px monospace'; x.fillStyle=GC; x.fillText('GROK · MCP',gx,gy+34);
+    if(D.gtxt){x.font='9px monospace'; x.fillStyle='#C9CED8'; x.fillText(D.gtxt.slice(0,46),gx,gy+47);}}
   // Tarjetas
-  cards.forEach(c=>{const a=c.a, on=a.status!=='idle', hot=a.key===D.hot, col=a.status==='block'?BAD:a.color;
+  cards.forEach(c=>{const a=c.a, on=a.status!=='idle', hot=a.key===D.hot||D.focus.includes(a.key), col=a.status==='block'?BAD:a.color;
     x.save(); if(hot){x.shadowColor=col; x.shadowBlur=22+Math.sin(t*4)*6;}
     x.fillStyle='#0a0e16'; x.beginPath(); x.roundRect(c.x,c.y,c.w,c.h,12); x.fill();
     x.fillStyle=hot?rgba(col,.12):'rgba(10,14,22,.92)'; x.strokeStyle=hot?rgba(col,.95):on?rgba(a.color,.35):'rgba(148,163,184,.14)'; x.lineWidth=hot?1.8:1;

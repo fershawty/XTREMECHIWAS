@@ -30,7 +30,7 @@ if not tcltk_info.available:
 datas, binaries, hiddenimports = [], [], []
 
 # Paquetes con archivos estáticos / binarios que hay que llevar completos
-for pkg in ("streamlit", "plotly", "curl_cffi"):
+for pkg in ("streamlit", "plotly", "curl_cffi", "mcp"):
     d, b, h = collect_all(pkg)
     datas += d
     binaries += b
@@ -110,8 +110,8 @@ if sys.platform == "darwin":
         info_plist={
             "CFBundleName": "FGView",
             "CFBundleDisplayName": "FG VIEW",
-            "CFBundleShortVersionString": "4.9.0",
-            "CFBundleVersion": "4.9.0",
+            "CFBundleShortVersionString": "5.0.0",
+            "CFBundleVersion": "5.0.0",
             "LSMinimumSystemVersion": "12.0",
             "NSHighResolutionCapable": True,
             "NSHumanReadableCopyright": "FG VIEW V2 · BY GUS X FER X ALFREDOBONUS",

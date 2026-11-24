@@ -1,7 +1,7 @@
 """
 engine/fgview/desk.py
 =====================
-FG DESK: mesa de 13 agentes (12 de código + 1 con IA real) para operaciones CORTAS en futuros de Binance.
+FG DESK: mesa de 12 agentes para operaciones CORTAS en futuros de Binance (15–30 min).
 
 Cada decisión pasa por una cadena; si un agente bloquea, no se opera:
 
@@ -17,7 +17,6 @@ Cada decisión pasa por una cadena; si un agente bloquea, no se opera:
                 noticias, stop diario, anti-revancha, correlación, liquidación.
     📐 KELLY    tamaño: ¼ de Kelly de la distribución simulada, nunca más que la tabla de capital.
     🛡️ GUARD    stop guard + escalera de TPs: SL fuera del ruido, breakeven tras TP1, trailing y tiempo máximo.
-    🧠 ANALYST  IA real (Claude por API, opcional): segunda opinión con noticias y contexto. SOLO puede frenar.
     🎯 TAKER    prepara la orden (post-only, SL obligatorio, trailing) y la envía si el piloto está activo.
     🧹 CLOSER   gestiona lo abierto: escudo anti-squeeze, trailing y cierres de papel.
 
@@ -41,8 +40,8 @@ from engine.fgview.plan import Plan
 from engine.fgview.timemachine import TimeMachine, TimeMachineResult
 from engine.position_simulator import fmt_pct, fmt_px, fmt_usd
 
-AGENTS = ("SPOTTER", "WHALE", "FLOW", "FUNDING", "GATE", "PRIOR", "PRICER", "EDGE", "KELLY", "GUARD", "ANALYST",
-          "TAKER", "CLOSER")
+AGENTS = ("SPOTTER", "WHALE", "FLOW", "FUNDING", "GATE", "PRIOR", "PRICER", "EDGE", "KELLY", "GUARD", "TAKER",
+          "CLOSER")
 FLOW_AGENTS = ("WHALE", "FLOW", "FUNDING")  # Votan a favor (+1) o en contra (−1) de la dirección
 AGENT_META = {
     "SPOTTER": ("🔭", "#3DDC97", "Lee el mercado"),
@@ -55,7 +54,6 @@ AGENT_META = {
     "EDGE": ("⚖️", "#FF5C8A", "Ventaja neta + guardias"),
     "KELLY": ("📐", "#5AC8FA", "Tamaño óptimo"),
     "GUARD": ("🛡️", "#A5B4FC", "Stop guard + TPs"),
-    "ANALYST": ("🧠", "#F5D0FE", "IA real (Claude)"),
     "TAKER": ("🎯", "#F2D27A", "Ejecución"),
     "CLOSER": ("🧹", "#FF8A3D", "Gestión y cierre"),
 }
@@ -144,7 +142,6 @@ class DeskDecision:
             return "NO OPERAR"
         hard = (self.edge_r is not None and self.edge_r < -0.02) or (self.probability or 0) < 50 or any(
             r.agent == "GATE" and r.status == "block" for r in self.results) or any(
-            r.agent == "ANALYST" and r.status == "block" and "VETA" in r.headline for r in self.results) or any(
             r.agent == "EDGE" and r.status == "block" and "⛔" in r.headline and "ventaja" not in r.headline.split("⛔")[-1]
             for r in self.results)
         return "NO OPERAR" if hard else "ESPERAR"
@@ -299,7 +296,6 @@ class Desk:
         from engine.fgview.flowfeed import FlowFeed
 
         self.flow = FlowFeed()  # Datos de Binance para WHALE/FLOW/FUNDING (None = desactivado)
-        self.analyst = None  # 🧠 AIAnalyst (IA real, opcional): lo conecta FGServices
 
     @staticmethod
     def tape(snap, bars: int = 80) -> dict | None:
@@ -652,25 +648,6 @@ class Desk:
         # --- GUARD (stop guard + escalera de TPs) ---
         g_res, g_opts = self.guard_agent(plan, snap)
         dec.results.append(g_res)
-        # --- ANALYST (IA real, opcional: solo puede frenar) ---
-        if self.analyst is not None and self.analyst.active():
-            if self._hard_objection(dec):
-                dec.results.append(AgentResult("ANALYST", "info", "No hace falta gastar en la IA: la mesa ya dice NO OPERAR"))
-            else:
-                news = []
-                try:
-                    news = s.news_monitor.headlines(8) if getattr(s, "news_monitor", None) else []
-                except Exception:  # noqa: BLE001 - sin noticias la IA opina igual
-                    news = []
-                dec.plan = plan
-                a_res = self.analyst.review(dec, snap, news)
-                if a_res is not None:
-                    dec.results.append(a_res)
-                    if a_res.status == "block" and risk > self.OPERABLE_RISK:  # La IA frena: riesgo reducido
-                        risk = min(risk, self.OPERABLE_RISK)
-                        plan = s.planner.plan(capital, symbol, rep.direction, snap.price, snap.atr5, lev_cap=sq.lev_cap,
-                                              risk_pct=risk, **lad)
-                        dec.plan, dec.risk_pct = plan, risk
         # --- TAKER ---
         t0 = time.perf_counter()
         ticket = s.executor.build_ticket(plan, symbol, market, exchange or "binance", "DESK", rep.score, post_only=True,
@@ -693,8 +670,7 @@ class Desk:
     @staticmethod
     def _hard_objection(dec: DeskDecision) -> bool:
         return (dec.edge_r is not None and dec.edge_r < -0.02) or (dec.probability or 0) < 50 or any(
-            (r.agent == "GATE" and r.status == "block") or (r.agent == "ANALYST" and r.status == "block" and "VETA" in r.headline)
-            for r in dec.results)
+            r.agent == "GATE" and r.status == "block" for r in dec.results)
 
     def close_agent(self) -> AgentResult:
         t0 = time.perf_counter()

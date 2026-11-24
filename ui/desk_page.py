@@ -111,7 +111,6 @@ def render_desk(svc, req) -> None:
             st.success("Abierta en papel.") if out.get("status") == "filled" else st.error(
                 (out.get("problems") or [out.get("message")])[0])
     _ladder(svc)
-    _ai_analyst(svc)
     _autopilot(svc, req, market, capital)
 
 
@@ -152,85 +151,6 @@ def _ladder(svc) -> None:
     st.progress(stt.progress, text=f"Hacia {fmt_usd(stt.next_target)} · {stt.progress * 100:.0f}%")
     if len(stt.history) > 1:
         st.line_chart(stt.history, height=140)
-
-
-GROK_TUTORIAL = """
-**Antes de pagar:** la suscripción de Grok en X o grok.com (≈ **$30/mes**) sirve para platicar con Grok en la app,
-pero **no incluye la API**. Para que FG VIEW hable con Grok se necesita la **API de xAI**, que se paga **aparte y por uso**
-(≈ 1 centavo de dólar por análisis con Grok 4.7). No hace falta la suscripción para usar la API.
-
-1. Entra a **console.x.ai** e inicia sesión (puedes usar la misma cuenta de X).
-2. Ve a **Billing / Facturación** y carga saldo prepagado. Con **$5–10 USD** alcanza para cientos de análisis.
-3. Ve a **API Keys** → **Create API Key**. Ponle un nombre (por ejemplo `FG VIEW`) y copia la key (empieza con `xai-`).
-   Guárdala bien: solo se muestra una vez.
-4. Abre el archivo **`.env`** que está junto a FGView (el mismo donde van las keys de Binance) y agrega una línea:
-   `XAI_API_KEY=xai-tu-key-aquí`
-5. **Cierra y vuelve a abrir FG VIEW** para que lea la key.
-6. Aquí abajo: elige **🤖 Grok (xAI)**, pulsa **🔌 Probar conexión** y, si sale ✅, enciende **Analista IA**.
-7. Pon un **tope diario** (por ejemplo $1). Cuando se alcanza, la IA deja de opinar ese día y la mesa sigue sola.
-
-**Seguridad:** la key de xAI solo sirve para hablar con Grok; no toca tu dinero de Binance. No la compartas ni la subas a
-internet. Si crees que se filtró, bórrala en console.x.ai y crea otra.
-"""
-
-
-def _ai_analyst(svc) -> None:
-    from engine.fgview.analyst import MODELS, PROVIDERS
-
-    ai = getattr(svc.desk, "analyst", None)
-    if ai is None:
-        return
-    st = ai.state()
-    st_title = "🧠 Analista IA · agente 13" + (" · ENCENDIDO" if ai.active() else " · apagado")
-    import streamlit as _st
-
-    _st.markdown(f"### {st_title}")
-    guide("Una IA real (Grok o Claude) revisa la operación que la mesa ya armó, junto con noticias y contexto, y da su "
-          "segunda opinión. Solo puede FRENAR: ⚠️ PRECAUCIÓN baja a ESPERAR con riesgo mínimo y ⛔ VETA la convierte en "
-          "NO OPERAR. Nunca sube el riesgo ni cambia tu SL.")
-    with _st.expander("📘 Tutorial: cómo conectar Grok (xAI) paso a paso", expanded=not ai.has_key("grok")):
-        _st.markdown(GROK_TUTORIAL)
-    c = _st.columns([1.1, 1.3, 1, 1], vertical_alignment="bottom")
-    prov = c[0].selectbox("Proveedor", list(PROVIDERS), index=list(PROVIDERS).index(st["provider"]),
-                          format_func=PROVIDERS.get, key="ai_prov")
-    models = list(MODELS[prov])
-    model = c[1].selectbox("Modelo", models, index=models.index(st["model"]) if st["model"] in models else 0,
-                           format_func=lambda m: MODELS[prov][m][0], key="ai_model")
-    cap = c[2].number_input("Tope diario (USD)", 0.1, 50.0, float(st["daily_cap"]), step=0.5, key="ai_cap")
-    on = c[3].toggle("Analista IA", value=st["enabled"], key="ai_on", disabled=not ai.has_key(prov))
-    if (prov, model, cap, on) != (st["provider"], st["model"], st["daily_cap"], st["enabled"]):
-        st = ai.set(provider=prov, model=model if model in MODELS[prov] else "", daily_cap=float(cap),
-                    enabled=bool(on and ai.has_key(prov)))
-    key_name = "XAI_API_KEY" if prov == "grok" else "ANTHROPIC_API_KEY"
-    _, pin, pout = MODELS[prov][st["model"]]
-    _st.caption(("🔑 Key detectada. " if ai.has_key(prov) else f"🔒 Falta {key_name} en el .env (sigue el tutorial). ")
-                + f"Gastado hoy: ${ai.spent_today():.3f} de ${st['daily_cap']:.2f} · precio aprox. ${pin:g}/${pout:g} "
-                "por millón de tokens · solo se usa cuando la mesa tiene una operación candidata.")
-    if _st.button("🔌 Probar conexión", key="ai_test", disabled=not ai.has_key(prov)):
-        msg = ai.test_connection()
-        (_st.success if msg.startswith("✅") else _st.error)(msg)
-    last = st.get("last")
-    if last:
-        icon = {"APRUEBA": "✅", "PRECAUCION": "⚠️", "VETA": "⛔"}.get(last["ia"], "•")
-        _st.markdown(f"**Última opinión** · {last.get('model', '')} · {last['symbol']} {last['dir']} · {icon} {last['ia']} "
-                     f"· confianza {last.get('confianza')}%  \n{last.get('resumen', '')}")
-        for r in last.get("razones", [])[:4]:
-            _st.caption(f"✓ {r}")
-        for r in last.get("riesgos", [])[:4]:
-            _st.caption(f"⚠ {r}")
-    try:
-        ai.evaluate(svc.history)
-    except Exception:  # noqa: BLE001
-        pass
-    sc = ai.scorecard()
-    if sc["evaluadas"]:
-        k = _st.columns(4)
-        k[0].metric("Opiniones revisadas", sc["evaluadas"])
-        k[1].metric("Frenadas que iban a SL ✅", f"{sc['frenadas_SL']}/{sc['frenadas']}")
-        k[2].metric("Aprobadas que llegaron a TP1", f"{sc['aprobadas_TP']}/{sc['aprobadas']}")
-        k[3].metric("Gasto total IA", f"${sc['gasto_total']:.2f}")
-        _st.caption("Marcador: una hora después de cada opinión, la app revisa con las velas reales si la operación habría "
-                    "tocado TP1 o SL primero. Si las frenadas casi nunca iban a SL, la IA no está ayudando: apágala.")
 
 
 def _autopilot(svc, req, market: str, capital: float) -> None:

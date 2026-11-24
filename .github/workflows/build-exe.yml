@@ -249,7 +249,14 @@ jobs:
           - **Windows**: `FGView-V2-Windows.zip` → descomprime y abre `FGView\FGView.exe`
           - **Mac Intel (macOS 12 Monterey o superior)**: `FGView-V2-macOS-Intel.dmg` → arrastra a Aplicaciones; la primera vez Control + clic → Abrir
 
-          **Novedades v4.9 · 🧠 Analista IA (agente 13) con Grok**
+          **Novedades v5.0 · 🤖 GROK DESK (agentes de Grok vía MCP)**
+          - Nueva página GROK DESK, igual a FG DESK (red de agentes, orbitales, tape, Galton, cordilleras), manejada por los agentes de Grok desde grok.com.
+          - FG VIEW trae su propio servidor MCP: en grok.com → Connectors → Custom pegas la dirección y Grok puede correr la mesa, ver mercado, ballenas y funding, consultar cada agente y dar su veredicto.
+          - Usa tu suscripción de Grok: no hace falta API key de xAI. Tutorial paso a paso con Cloudflare Tunnel dentro de la app.
+          - Seguridad: por MCP no existen órdenes reales (solo análisis y papel), token secreto en la dirección, y Grok puede frenar pero no forzar.
+          - Se retira el Analista IA por API de la v4.9.
+
+ (agente 13) con Grok**
           - Una IA real revisa la operación que armó la mesa (con noticias y contexto) y da su segunda opinión: ✅ APRUEBA, ⚠️ PRECAUCIÓN (baja a ESPERAR con riesgo mínimo) o ⛔ VETA (NO OPERAR). Solo puede frenar: nunca sube el riesgo ni cambia el SL.
           - Grok (xAI) por defecto; también Claude. Tutorial paso a paso dentro de FG DESK. Ojo: la suscripción de Grok de ~$30 NO incluye la API; la API se paga aparte por uso en console.x.ai (≈ 1 centavo por análisis con Grok 4.7).
           - Tope diario de gasto, reutiliza la opinión 10 min y solo se llama cuando hay operación candidata. Marcador que mide si sus vetos aciertan.
