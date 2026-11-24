@@ -249,6 +249,12 @@ jobs:
           - **Windows**: `FGView-V2-Windows.zip` → descomprime y abre `FGView\FGView.exe`
           - **Mac Intel (macOS 12 Monterey o superior)**: `FGView-V2-macOS-Intel.dmg` → arrastra a Aplicaciones; la primera vez Control + clic → Abrir
 
+          **Novedades v5.2 · papel arreglado + 📲 Telegram + 📱 app de iPhone**
+          - Arreglo: en papel el piloto casi nunca abría nada (solo entraba en OPERAR). Nuevo «🧪 Papel de aprendizaje» (encendido por defecto): en PAPEL abre lo más recomendado aunque la mesa diga ESPERAR o NO OPERAR, con riesgo reducido y marcado APRENDIZAJE. No cuenta para desbloquear el real y nunca aplica en real.
+          - La mesa analiza todas las candidatas y luego envía solo la elegida (antes podía enviar la primera aunque una posterior fuera mejor).
+          - Bot de Telegram del copiloto: /tarjeta, /radar, /plan, /coach, /reglas, /resumen, /semana, /stop; solo responde a tu chat; el COACH contesta primero si escribes en tilt; aviso de cada cierre y un tablero fijado que se actualiza solo.
+          - App de iPhone (Safari → Agregar a inicio): Radar de tarjetas, armar tarjeta, posiciones con stop y TP1, COACH, diario y resultados; usa el mismo túnel que el MCP y no puede abrir órdenes.
+
           **Novedades v5.1 · 🧭 Copiloto (prompt de 21 páginas adaptado a futuros de Binance)**
           - TRADE CARD con formato fijo (SCORE y banda GREEN/YELLOW/RED/SKIP, por qué, seguridad, momentum, mi lectura, plan, FOMO, TASA BASE, reglas). Cada número con su fuente y edad; nunca promete ganancias.
           - COACH: medidor FOMO 0-10 que reduce el tamaño, pausa tras rachas de pérdidas, stop del día, límites, hora límite y respuesta al "tilt". El piloto automático respeta tus reglas.

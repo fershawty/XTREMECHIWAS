@@ -176,6 +176,12 @@ def _autopilot(svc, req, market: str, capital: float) -> None:
                       index=1 if stt["mode"] == "live" else 0,
                       format_func={"paper": "📝 Papel", "live": "💵 Real"}.get, disabled=not (unlocked and live_enabled()))
     maxt = c[2].number_input("Máx. operaciones/día", 1, 30, int(stt["max_trades_day"]), key="ap_max")
+    learn = st.toggle("🧪 Papel de aprendizaje: en papel, abrir también lo más recomendado aunque la mesa diga ESPERAR o NO OPERAR",
+                      value=bool(stt.get("learn", True)), key="ap_learn",
+                      help="Solo en PAPEL, con riesgo reducido y marcadas como APRENDIZAJE. Sirve para medir y aprender; "
+                           "NO cuentan para desbloquear el modo real. En real, NO OPERAR nunca se ejecuta solo.")
+    if learn != bool(stt.get("learn", True)):
+        stt = pilot.set(learn=learn)
     lvl = st.radio("El piloto entra en", ["OPERAR", "ESPERAR"], horizontal=True, key="ap_lvl",
                    index=1 if stt.get("min_level") == "ESPERAR" else 0,
                    format_func={"OPERAR": "✅ Solo OPERAR (recomendado)", "ESPERAR": "⏸️ OPERAR y ESPERAR (riesgo reducido)"}.get,
@@ -186,6 +192,10 @@ def _autopilot(svc, req, market: str, capital: float) -> None:
     if (on, mode, maxt, maxl) != (stt["enabled"], stt["mode"], stt["max_trades_day"], stt["max_loss_pct"]):
         stt = pilot.set(enabled=on, mode=mode if (unlocked and live_enabled()) else "paper", max_trades_day=int(maxt),
                         max_loss_pct=float(maxl))
+    ls = pilot.paper_stats(learn=True)
+    if ls["trades"]:
+        st.caption(f"🧪 Aprendizaje en papel: {ls['trades']} operaciones · win rate {ls['win_rate']:.0f}% · "
+                   f"neto {ls['net']:+.2f} USDT · profit factor {ls['pf']:.2f} (no cuentan para el real)")
     st.caption(("🔓 Modo real desbloqueado. " if unlocked else "🔒 Modo real bloqueado. ") + why
                + ("" if live_enabled() else " · Además hace falta LIVE_TRADING_ENABLED=true en .env."))
     if st.button("⛔ APAGAR PILOTO YA", key="ap_kill", type="secondary"):

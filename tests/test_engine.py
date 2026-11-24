@@ -1153,3 +1153,96 @@ def test_autopilot_respects_coach(fgdb):
     pilot.set(enabled=True)
     assert pilot.tick(1000, "demo", force=True) is None
     assert any("Límite alcanzado" in e["text"] for e in pilot.state()["events"])
+
+
+def test_paper_learning_opens_best_plan_only_in_paper(fgdb):
+    fgdb.copilot.rules.change("cutoff", "23:59")
+    fgdb.copilot.rules.change("day_start", "00:00")
+    pilot = fgdb.autopilot
+    pilot.set(enabled=True, mode="paper")  # Sin forzar la mesa: con datos DEMO casi siempre dice NO OPERAR
+    dec = pilot.tick(1000, "demo", force=True)
+    assert dec is not None and dec.ticket is not None
+    if not dec.approved:
+        assert dec.sent and dec.raw.get("learn")
+        pos = fgdb.positions.all()[0]
+        assert pos["strategy"] == "DESK · APRENDIZAJE" and pos["mode"] == "papel"
+        assert dec.risk_pct <= fgdb.desk.OPERABLE_RISK + 1e-9
+    assert pilot.tick(1000, "demo", force=True).sent is False  # No apila la misma cripto
+    assert fgdb.desk.learn is False  # Se apaga después de cada vuelta
+    # En real el aprendizaje nunca aplica
+    fgdb.desk.learn = True
+    assert fgdb.desk.send(dec, "live") is False or dec.approved
+    fgdb.desk.learn = False
+    assert pilot.paper_stats(learn=True)["trades"] == 0 and pilot.paper_stats()["trades"] == 0
+
+
+class _FakeTG:
+    def __init__(self):
+        self.calls = []
+
+    def post(self, url, json=None, timeout=None):  # noqa: A002
+        self.calls.append((url.rsplit("/", 1)[-1], json))
+
+        class R:
+            def json(self_inner):
+                return {"ok": True, "result": {"message_id": 7} if not url.endswith("getUpdates") else []}
+        return R()
+
+
+def test_telegram_only_my_chat_commands_and_tilt(fgdb):
+    from engine.fgview.telegram_bot import TelegramCopilot
+
+    fgdb.copilot.rules.change("cutoff", "23:59")
+    fgdb.copilot.rules.change("day_start", "00:00")
+    fake = _FakeTG()
+    first = TelegramCopilot(fgdb, token="T", chat_id="", http=fake)
+    assert "Tu chat id es" in first.handle({"message": {"chat": {"id": 555}, "text": "/start"}})
+    assert first.handle({"message": {"chat": {"id": 555}, "text": "/coach"}}) is None  # Sin chat id: nada más
+    tg = TelegramCopilot(fgdb, token="T", chat_id="111", http=fake)
+    assert tg.handle({"message": {"chat": {"id": 999}, "text": "/coach"}}) is None  # Chat ajeno: ignorado
+    assert tg.state()["ignored"] == 1
+    assert "COACH" in tg.handle({"message": {"chat": {"id": 111}, "text": "/coach"}})
+    assert "/tarjeta" in tg.handle({"message": {"chat": {"id": 111}, "text": "/help"}})
+    _desk_forced(fgdb)
+    card = tg.handle({"message": {"chat": {"id": 111}, "text": "/tarjeta DEMO"}})
+    assert "SCORE" in card or "SKIP" in card
+    assert "Pausamos" in tg.handle({"message": {"chat": {"id": 111}, "text": "lo recupero ya, voy con todo"}})
+    fgdb.autopilot.set(enabled=True)
+    assert "Apagué" in tg.handle({"message": {"chat": {"id": 111}, "text": "/stop"}})
+    assert not fgdb.autopilot.state()["enabled"]
+    assert "MIS REGLAS" in tg.handle({"message": {"chat": {"id": 111}, "text": "/reglas"}})
+    tg.update_dashboard()
+    assert tg.state()["pinned_id"] == 7 and any(c[0] == "pinChatMessage" for c in fake.calls)
+    tg.on_close({"coin": "SOL", "direction": "LONG", "mode": "papel"}, {"pnl": 2.5, "reason": "TP1"})
+    assert "Cerrada SOL" in tg.sent[-1]
+    assert all(c[1].get("chat_id") in ("111", "555", None) for c in fake.calls)
+
+
+def test_iphone_webapp_served_with_token(fgdb):
+    import json as _j
+    import urllib.request
+
+    br = fgdb.grok
+    tok = br.state()["token"]
+    _desk_forced(fgdb)
+    br.start(8811)
+    try:
+        base = f"http://127.0.0.1:8811/app/{tok}"
+        html = urllib.request.urlopen(base + "/", timeout=10).read().decode()
+        assert "apple-touch-icon" in html and "FG VIEW" in html
+        st = _j.loads(urllib.request.urlopen(base + "/api/state", timeout=10).read())
+        assert {"coach", "cards", "positions", "journal", "stats", "rules"} <= set(st)
+        m = _j.loads(urllib.request.urlopen(base + "/manifest.json", timeout=10).read())
+        assert m["display"] == "standalone"
+        req = urllib.request.Request(base + "/api/check", data=b'{"symbol":"DEMO"}', method="POST",
+                                     headers={"Content-Type": "application/json"})
+        card = _j.loads(urllib.request.urlopen(req, timeout=60).read())
+        assert "tarjeta" in card
+        try:
+            urllib.request.urlopen("http://127.0.0.1:8811/app/malo/api/state", timeout=10)
+            raise AssertionError("debió dar 404")
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 404
+        assert br.app_url(local=True).endswith(f"/app/{tok}/")
+    finally:
+        br.stop()

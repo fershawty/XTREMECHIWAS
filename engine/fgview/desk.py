@@ -291,6 +291,7 @@ class Desk:
         self.min_prob, self.min_edge_r, self.kelly_fraction = min_prob, min_edge_r, kelly_fraction
         self.min_prior, self.operable = min_prior, operable
         self.send_wait = False  # El piloto también entra en ESPERAR (riesgo reducido) si el usuario lo activa
+        self.learn = False  # 🧪 Papel de aprendizaje: en PAPEL abre lo más recomendado aunque la mesa no lo apruebe
         self.rotation = SignalRotation(services.filters)
         self.calibrator = Calibrator(services.time_machine, config)
         from engine.fgview.flowfeed import FlowFeed
@@ -657,16 +658,47 @@ class Desk:
         objected = any(r.status == "block" for r in dec.results)
         sent_txt = ("🎲 OPERABLE · NO RECOMENDADA: solo tú decides" if objected
                     else "orden lista: esperando tu confirmación")
-        if send_mode in ("paper", "live") and (not objected or (self.send_wait and not self._hard_objection(dec))):
-            out = s.executor.submit(ticket, confirmed=True, mode=send_mode)
-            dec.sent = out.get("status") == "filled"
-            sent_txt = (f"ENVIADA ({'papel' if send_mode == 'paper' else 'REAL'})" if dec.sent
-                        else f"no enviada: {(out.get('problems') or [out.get('message', '')])[0]}")
         dec.results.append(AgentResult("TAKER", "info" if objected else "pass", f"{plan.direction} {fmt_px(plan.entry)} post-only · SL "
                                        f"{fmt_px(plan.stop_loss)} · TP1 {fmt_px(plan.tps[0][0])} ({fmt_pct(plan.tps[0][1])}) "
                                        f"· {sent_txt}", ms=(time.perf_counter() - t0) * 1000))
+        if send_mode in ("paper", "live"):
+            self.send(dec, send_mode)
         dec.results.append(self.close_agent())
         return dec
+
+    def send(self, dec: DeskDecision, send_mode: str) -> bool:
+        """
+        Envía la orden de una decisión YA analizada, según las reglas:
+        * OPERAR → se envía (papel o real).
+        * ESPERAR → solo si el usuario activó «entrar en ESPERAR» y no hay objeción fuerte.
+        * 🧪 Papel de aprendizaje (solo PAPEL): abre lo más recomendado aunque sea ESPERAR/NO OPERAR, marcado
+          «APRENDIZAJE», para medir. Nunca en real.
+        """
+        if dec.ticket is None or dec.sent or send_mode not in ("paper", "live"):
+            return False
+        ticket, learn = dec.ticket, False
+        if dec.approved:
+            pass
+        elif self.send_wait and not self._hard_objection(dec):
+            pass
+        elif send_mode == "paper" and self.learn:
+            if any(p.get("coin") == ticket.coin for p in self.s.positions.all()):
+                return False  # Ya hay una posición de esa cripto: no se apila
+            ticket, learn = replace(ticket, strategy="DESK · APRENDIZAJE"), True
+        else:
+            return False
+        out = self.s.executor.submit(ticket, confirmed=True, mode=send_mode)
+        dec.sent = out.get("status") == "filled"
+        dec.raw["learn"] = learn and dec.sent
+        txt = ((f"🧪 ENVIADA EN PAPEL (aprendizaje · la mesa dijo {dec.verdict})" if learn else
+                f"ENVIADA ({'papel' if send_mode == 'paper' else 'REAL'})") if dec.sent
+               else f"no enviada: {(out.get('problems') or [out.get('message', '')])[0]}")
+        for i, r in enumerate(dec.results):
+            if r.agent == "TAKER":
+                base = r.headline.replace(" · 🎲 OPERABLE · NO RECOMENDADA: solo tú decides", "").replace(
+                    " · orden lista: esperando tu confirmación", "")
+                dec.results[i] = replace(r, headline=f"{base} · {txt}")
+        return dec.sent
 
     @staticmethod
     def _hard_objection(dec: DeskDecision) -> bool:
@@ -684,7 +716,8 @@ class Desk:
         return AgentResult("CLOSER", "info", txt, ms=(time.perf_counter() - t0) * 1000)
 
     def scan(self, coins: list[str], market: str, capital: float, exchange: str | None = None,
-             top: int = 3, send_mode: str | None = None, ladder_risk: float | None = None) -> tuple[DeskDecision | None, list[tuple[str, float, str]]]:
+             top: int = 3, send_mode: str | None = None, ladder_risk: float | None = None,
+             operable: bool | None = None) -> tuple[DeskDecision | None, list[tuple[str, float, str]]]:
         """Spotter rápido sobre todas; cadena completa solo para las `top` mejores."""
         ranked = []
         for c in coins:
@@ -698,13 +731,18 @@ class Desk:
                 break
         ranked.sort(key=lambda x: x[1], reverse=True)
         best = None
-        cands = [r for r in ranked if r[1] >= 0][:top] or ([r for r in ranked if r[1] > -2][:top] if self.operable else [])
+        operable = self.operable if operable is None else operable
+        cands = [r for r in ranked if r[1] >= 0][:top] or ([r for r in ranked if r[1] > -2][:top] if operable else [])
         for sym, sc, _ in cands:
-            dec = self.run(sym, market, capital, exchange, send_mode=send_mode, ladder_risk=ladder_risk)
+            # Se analizan TODAS las candidatas sin enviar; luego se envía solo la elegida
+            dec = self.run(sym, market, capital, exchange, ladder_risk=ladder_risk, operable=operable)
             if dec.approved:
-                return dec, ranked
+                best = dec
+                break
             if best is None or self._operable_score(dec) > self._operable_score(best):
                 best = dec  # 🎲 la más operable: mayor probabilidad y ventaja
+        if best is not None and send_mode in ("paper", "live"):
+            self.send(best, send_mode)
         return best, ranked
 
     @staticmethod
@@ -733,7 +771,7 @@ class Autopilot:
     def state(self) -> dict:
         data = (self.db.get_state(self.KEY, {}) if self.db is not None else self._mem) or {}
         return {"enabled": False, "mode": "paper", "max_trades_day": 6, "max_loss_pct": 3.0, "tiers": ["A", "B"],
-                "min_level": "OPERAR",
+                "min_level": "OPERAR", "learn": True,
                 "last_run": 0.0, "events": [], **data}
 
     def save(self, st: dict) -> None:
@@ -748,9 +786,12 @@ class Autopilot:
         self.save(st)
         return st
 
-    def paper_stats(self) -> dict:
+    def paper_stats(self, learn: bool = False) -> dict:
+        """Resultados en papel. `learn=False`: solo lo que la mesa aprobó (cuenta para desbloquear el real);
+        `learn=True`: las operaciones de aprendizaje (lo más recomendado aunque la mesa no lo aprobara)."""
+        tag = "DESK · APRENDIZAJE · papel" if learn else "DESK · papel"
         trades = [t for t in (self.desk.s.journal.entries() if self.desk.s.journal else [])
-                  if str(t.get("notes", "")).startswith("DESK · papel")]
+                  if str(t.get("notes", "")).startswith(tag)]
         pnl = [float(t.get("pnl") or 0) for t in trades]
         wins, losses = sum(p for p in pnl if p > 0), -sum(p for p in pnl if p < 0)
         pf = wins / losses if losses > 0 else (float("inf") if wins > 0 else 0.0)
@@ -824,8 +865,16 @@ class Autopilot:
                 mode = "paper"
         coins = [c for t in s.tiers.tiers if t.key in st["tiers"] for c in t.coins]
         self.desk.send_wait = st.get("min_level") == "ESPERAR"
-        dec, _ = self.desk.scan(coins, market, capital, exchange, send_mode=mode, ladder_risk=ladder_risk)
-        if dec is not None and dec.sent:
+        self.desk.learn = mode == "paper" and bool(st.get("learn", True))  # Nunca en real
+        try:
+            dec, _ = self.desk.scan(coins, market, capital, exchange, send_mode=mode, ladder_risk=ladder_risk,
+                                    operable=True if self.desk.learn else None)
+        finally:
+            self.desk.learn = False
+        if dec is not None and dec.sent and dec.raw.get("learn"):
+            self._log(f"🧪 APRENDIZAJE (papel) · la mesa dijo {dec.verdict}: abrí lo más recomendado para medir · "
+                      f"{dec.direction} {dec.symbol} · P(TP1) {dec.probability or 0:.0f}% · riesgo {dec.risk_pct or 0:.2f}%")
+        elif dec is not None and dec.sent:
             self._log(f"🎯 {dec.summary()} → enviada en {'papel' if mode == 'paper' else 'REAL'}.")
             try:
                 s.alerts.sender.send_text(f"🤖 FG DESK · {dec.summary()}")

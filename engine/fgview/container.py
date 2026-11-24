@@ -76,6 +76,7 @@ class FGServices:
     ladder_desk: object | None = None  # 🪜 Modo escalera de la mesa
     grok: object | None = None  # 🤖 GROK DESK: puente MCP para los agentes de Grok
     copilot: object | None = None  # 🧭 Copiloto: Trade Card, COACH, reglas y SCRIBE
+    telegram: object | None = None  # 📲 Bot de Telegram del copiloto
     autopilot: object | None = None  # Piloto automático de la mesa
     extras: dict = field(default_factory=dict)
 
@@ -127,4 +128,7 @@ class FGServices:
         inst.copilot = Copilot(inst)
 
         inst.grok = GrokBridge(inst)
+        from engine.fgview.telegram_bot import TelegramCopilot
+
+        inst.telegram = TelegramCopilot(inst)
         return inst

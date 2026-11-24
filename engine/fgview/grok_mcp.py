@@ -384,9 +384,13 @@ class GrokBridge:
 
         token = self.state()["token"]
         # Protección por token secreto en la ruta; el Host lo pone el túnel (dominio público), por eso no se filtra Host
-        return self.build().streamable_http_app(
+        app = self.build().streamable_http_app(
             streamable_http_path=f"/mcp/{token}", stateless_http=True, json_response=True,
             transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False))
+        from engine.fgview.webapp import routes
+
+        app.router.routes.extend(routes(self, token))  # 📱 App de iPhone en el mismo servidor y túnel
+        return app
 
     def running(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
@@ -423,6 +427,11 @@ class GrokBridge:
         st = self.state()
         base = (st.get("tunnel") or "").strip().rstrip("/")
         return f"{base}/mcp/{st['token']}" if base.startswith("https://") else None
+
+    def app_url(self, local: bool = False) -> str | None:
+        st = self.state()
+        base = f"http://127.0.0.1:{st['port']}" if local else (st.get("tunnel") or "").strip().rstrip("/")
+        return f"{base}/app/{st['token']}/" if (local or base.startswith("https://")) else None
 
 
 def main() -> None:  # pragma: no cover - servidor independiente: python -m engine.fgview.grok_mcp

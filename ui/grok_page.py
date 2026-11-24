@@ -66,6 +66,7 @@ def render_grok(svc, req) -> None:
            "Pídele a Grok que corra la mesa: aquí se anima todo."],
           "Todo lo que Grok haga por aquí es análisis o modo papel: no hay órdenes reales por MCP.")
     _connection(br)
+    _mobile(svc, br)
     _copilot(svc, br)
     stt = br.state()
     ev = stt["events"]
@@ -123,6 +124,67 @@ def _connection(br) -> None:
             br.start(int(stt["port"]))
         st.rerun()
     y.caption(f"Dirección local (solo tu PC): `{br.local_url()}` · Para usarlo sin la app: `python -m engine.fgview.grok_mcp`")
+
+
+TELEGRAM_TUTORIAL = """
+1. En Telegram busca **@BotFather** → `/newbot` → ponle un nombre y un usuario que termine en `bot`.
+2. Copia el **token** que te da y agrégalo al `.env` junto a FGView: `TELEGRAM_BOT_TOKEN=123456:ABC…`
+3. Reinicia FG VIEW, vuelve aquí y pulsa **▶ Encender Telegram**.
+4. Escríbele **/start** a tu bot: te responde con tu **chat id**. Ponlo en el `.env`: `TELEGRAM_CHAT_ID=…` y reinicia.
+5. Listo: el bot solo responde a TU chat. Escribe **/help** para ver los comandos.
+
+El token es secreto: no lo compartas ni lo subas a internet. Si se filtra, en @BotFather usa `/revoke`.
+"""
+IPHONE_TUTORIAL = """
+1. Enciende el **servidor MCP** y abre el **túnel** (sección de arriba), y pega la dirección del túnel.
+2. En el iPhone abre en **Safari** la dirección de la app que aparece aquí abajo.
+3. Toca **Compartir** → **Agregar a inicio**. Queda como app, a pantalla completa.
+4. Pestañas: **Radar** (tarjetas), **Tarjeta** (armar una), **Posiciones** (stop y TP1), **Coach**, **Diario**, **Stats**.
+
+La app solo muestra y arma tarjetas: no abre órdenes. Lo único que cambia algo es «Ya terminé por hoy», que apaga
+el piloto. Los avisos al teléfono llegan por **Telegram**. La dirección lleva tu token secreto: no la compartas.
+Con el túnel rápido de Cloudflare la dirección cambia cada vez que lo abres: vuelve a abrirla en Safari.
+"""
+
+
+def _mobile(svc, br) -> None:
+    tg = getattr(svc, "telegram", None)
+    a, b = st.columns(2)
+    with a:
+        st.markdown("### 📲 Telegram")
+        if tg is None:
+            st.caption("No disponible.")
+        else:
+            on = tg.running()
+            st.caption(("🟢 Encendido" if on else "⚪ Apagado") + " · "
+                       + ("token ✅" if tg.configured() else "falta TELEGRAM_BOT_TOKEN") + " · "
+                       + ("chat ✅" if tg.chat_id else "falta TELEGRAM_CHAT_ID (escribe /start al bot)"))
+            x, y = st.columns(2)
+            if not on and x.button("▶ Encender Telegram", key="tg_on", disabled=not tg.configured(), width="stretch"):
+                st.toast(tg.start())
+                st.rerun()
+            if on and x.button("⏹ Apagar Telegram", key="tg_off", width="stretch"):
+                tg.stop()
+                st.rerun()
+            if y.button("📌 Enviar tablero", key="tg_dash", disabled=not tg.ready(), width="stretch"):
+                tg.update_dashboard()
+                st.toast("Tablero enviado y fijado.")
+            with st.expander("📘 Tutorial de Telegram"):
+                st.markdown(TELEGRAM_TUTORIAL)
+            ign = tg.state().get("ignored", 0)
+            if ign:
+                st.caption(f"⚠️ {ign} mensajes de otros chats ignorados.")
+    with b:
+        st.markdown("### 📱 App de iPhone")
+        url = br.app_url()
+        if url:
+            st.caption("Ábrela en Safari y agrégala a inicio:")
+            st.code(url, language="text")
+        else:
+            st.caption("Pega la dirección del túnel arriba para obtener el link de la app.")
+        st.caption(f"En esta PC (con el servidor encendido): `{br.app_url(local=True)}`")
+        with st.expander("📘 Tutorial de la app de iPhone"):
+            st.markdown(IPHONE_TUTORIAL)
 
 
 def _copilot(svc, br) -> None:
