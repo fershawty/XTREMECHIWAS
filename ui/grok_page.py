@@ -13,7 +13,10 @@ from __future__ import annotations
 import streamlit as st
 import streamlit.components.v1 as components
 
-from ui.grok_desk_view import build_desk_payload, desk_html
+from ui.components import _logo_svg
+from ui.desk_page import _capital
+from ui.desk_terminal import build_payload, terminal_html
+from ui.grok_desk_view import equipo_html, team_snapshot
 from ui.mode import guide
 
 TUTORIAL = """
@@ -63,7 +66,20 @@ def render_grok(svc, req) -> None:
           "Por MCP y por la app de iPhone no hay órdenes reales. El token del conector se muestra enmascarado.")
     _controls(br)
     def _paint() -> None:
-        components.html(desk_html(build_desk_payload(svc, br)), height=1080, scrolling=False)
+        pay = build_payload(svc, br.last_dec, None, _capital())
+        pay["brand"] = "GROK DESK"
+        pay["grok"] = True
+        pay["demo"] = str(getattr(req, "market", "") or "").lower() == "demo" or str(pay.get("symbol") or "").upper().startswith("DEMO")
+        pay["mcp"] = "ENCENDIDO" if br.running() else "APAGADO"
+        snap = getattr(br.last_dec, "snap", None)
+        fetched = getattr(snap, "fetched_at", None) if snap is not None else None
+        if fetched is not None:
+            from datetime import datetime, timezone
+            if fetched.tzinfo is None:
+                fetched = fetched.replace(tzinfo=timezone.utc)
+            pay["age_s"] = max(0, int((datetime.now(timezone.utc) - fetched).total_seconds()))
+        components.html(terminal_html(pay, _logo_svg()), height=1470, scrolling=False)
+        components.html(equipo_html(team_snapshot(svc, br)), height=460, scrolling=False)
     st.fragment(_paint, run_every=5 if br.running() else None)()
     _audit_panel(svc, br)
     _connection(br)
