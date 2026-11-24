@@ -464,3 +464,128 @@ function frame(t){
 requestAnimationFrame(frame);
 </script>
 """
+
+_GMAP = (
+    ("G-SCOUT", "SPOTTER", "#3DDC97"),
+    ("G-MARKET", "PRIOR", "#F5A623"),
+    ("G-WHALE", "WHALE", "#3B82F6"),
+    ("G-FLOW", "FLOW", "#2DD4BF"),
+    ("G-FUNDING", "FUNDING", "#A3E635"),
+    ("G-TRAP", "GATE", "#FF4D6D"),
+    ("G-ODDS", "PRICER", "#B388FF"),
+    ("G-RISK", "KELLY", "#5AC8FA"),
+    ("G-JUDGE", "EDGE", "#FF5C8A"),
+    ("G-EXEC", "TAKER", "#F2D27A"),
+    ("G-WATCH", "CLOSER", "#FF8A3D"),
+)
+_VOTE_KEYS = {"G-MARKET", "G-WHALE", "G-FLOW", "G-FUNDING", "G-TRAP", "G-ODDS"}
+
+
+def team_snapshot(svc, br) -> dict:
+    """KPIs del equipo. El límite del día sale de rules.md, no de un 6 fijo."""
+    rules = svc.copilot.rules.values()
+    coach = svc.copilot.coach.status()
+    last = None
+    try:
+        last = br.team.latest()
+    except Exception:  # noqa: BLE001
+        last = None
+    votes = (last or {}).get("votos") or {}
+    judge = (last or {}).get("juez") or {}
+    agents = []
+    for key, critter, color in _GMAP:
+        item = votes.get(key) or {}
+        vote = item.get("voto") if key in _VOTE_KEYS and item else None
+        agents.append({"key": key, "critter": critter, "color": color, "vote": vote,
+                       "line": (item.get("linea") or "n/a") if item else "n/a"})
+    rows = []
+    try:
+        for item in (br.state().get("verdicts") or [])[-12:]:
+            rows.append({"at": item.get("at") or "n/a", "symbol": item.get("simbolo") or "n/a",
+                         "side": item.get("direccion") or "n/a", "veredicto": item.get("veredicto") or "n/a",
+                         "suma": item.get("suma"), "confianza": item.get("confianza"),
+                         "abierta": bool(item.get("abierta"))})
+    except Exception:  # noqa: BLE001
+        rows = []
+    ops = []
+    try:
+        for pos in svc.positions.all():
+            who = "GROK" if "GROK" in str(pos.get("strategy") or "").upper() else "MANUAL"
+            ops.append({"coin": pos.get("coin") or "n/a", "side": pos.get("direction") or "n/a",
+                        "who": who, "entry": _num(pos.get("entry")), "sl": _num(pos.get("stop_loss"))})
+    except Exception:  # noqa: BLE001
+        ops = []
+    return {"trades_today": coach.get("trades_today"), "max_trades": int(rules["max_trades_day"]),
+            "open": coach.get("open"), "max_open": int(rules["max_open"]),
+            "pnl": _num(coach.get("pnl_today"), 2), "bankroll": _num(coach.get("bankroll"), 2),
+            "paused": coach.get("blocked"), "agents": agents, "judge": judge.get("veredicto"),
+            "suma": (last or {}).get("suma"), "rows": rows, "ops": ops}
+
+
+def equipo_html(snap: dict, height: int = 460) -> str:
+    from ui.critters import CRITTERS_JS
+
+    data = json.dumps(snap, ensure_ascii=False).replace("<", "\\u003c")
+    return _EQUIPO.replace("__CRITTERS__", CRITTERS_JS).replace("__DATA__", data).replace("__H__", str(int(height)))
+
+
+_EQUIPO = r"""
+<div id="eq">
+  <div class="hd">◆ EQUIPO GROK <span>— 11 AGENTES · VOTOS −2…+2 · SOLO PAPEL</span></div>
+  <div class="kpis" id="k"></div>
+  <canvas id="ring"></canvas>
+  <div class="tbl" id="tbl"></div>
+</div>
+<style>
+  html,body{margin:0;background:#05070b;color:#E6E9EF;font-family:ui-monospace,monospace}
+  #eq{height:__H__px;background:#0a0e16;border:1px solid rgba(148,163,184,.14);border-radius:12px;position:relative;overflow:hidden}
+  .hd{position:absolute;left:12px;top:8px;font-size:10px;letter-spacing:.18em;color:#C9CED8}
+  .hd span{color:#566074}
+  .kpis{position:absolute;left:12px;right:12px;top:28px;display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+  .kpi{border:1px solid rgba(148,163,184,.14);border-radius:8px;padding:4px 8px;background:#06080d}
+  .kpi i{font-style:normal;font-size:8px;letter-spacing:.12em;color:#566074}
+  .kpi b{display:block;font-size:14px;font-variant-numeric:tabular-nums}
+  canvas{position:absolute;left:0;right:0;top:78px;height:210px;width:100%}
+  .tbl{position:absolute;left:10px;right:10px;bottom:8px;height:150px;overflow:auto;font-size:10px}
+  .r{display:grid;grid-template-columns:52px 90px 54px 88px 1fr;gap:6px;padding:2px 0;border-bottom:1px solid rgba(148,163,184,.08)}
+  .pause{position:absolute;left:12px;right:12px;top:92px;background:rgba(245,166,35,.15);color:#F2D27A;padding:4px 8px;border-radius:8px;font-size:11px}
+</style>
+<script>
+__CRITTERS__
+const G=__DATA__;
+const $=id=>document.getElementById(id);
+const na=v=>v===null||v===undefined||v===""?"n/a":v;
+const money=v=>v===null||v===undefined?"n/a":(v<0?"−$":"$")+Math.abs(v).toFixed(2);
+$("k").innerHTML=[
+ ["BANKROLL PAPEL", money(G.bankroll)],
+ ["P&L HOY", money(G.pnl)],
+ ["HOY", na(G.trades_today)+"/"+na(G.max_trades)],
+ ["ABIERTAS", na(G.open)+"/"+na(G.max_open)],
+ ["JUEZ", (G.judge||"n/a")+(G.suma===null||G.suma===undefined?"":" · Σ "+G.suma)],
+].map(x=>`<div class="kpi"><i>${x[0]}</i><b>${x[1]}</b></div>`).join("");
+if(G.paused){const p=document.createElement("div"); p.className="pause"; p.textContent="PAUSADO POR TUS REGLAS · "+G.paused; document.getElementById("eq").appendChild(p);}
+const rows=(G.rows||[]);
+const ops=(G.ops||[]).map(o=>`<div class="r"><span>papel</span><span>${o.coin} ${o.side}</span><span>${o.who}</span><span>e ${na(o.entry)}</span><span>SL ${na(o.sl)}</span></div>`).join("");
+$("tbl").innerHTML=(rows.length?rows.map(r=>`<div class="r"><span>${r.at}</span><span>${r.symbol}</span><span>${r.side}</span><span>${r.veredicto}</span><span>Σ ${na(r.suma)} · ${na(r.confianza)}% · ${r.abierta?"papel":"sin abrir"}</span></div>`).join(""):'<div class="r"><span>n/a</span><span>sin veredictos</span></div>')+ops;
+const cv=$("ring"), x=cv.getContext("2d");
+function fit(){const d=Math.min(2,devicePixelRatio||1); cv.width=cv.clientWidth*d; cv.height=cv.clientHeight*d; x.setTransform(d,0,0,d,0,0);}
+function frame(t){
+  if(!cv.clientWidth){requestAnimationFrame(frame); return;}
+  if(Math.abs(cv.width/Math.min(2,devicePixelRatio||1)-cv.clientWidth)>1) fit();
+  const w=cv.clientWidth,h=cv.clientHeight,cx=w/2,cy=h/2+6;
+  x.clearRect(0,0,w,h);
+  drawCritter(x,"GROK",cx,cy-6,22,"#F5D0FE",t/1000,"info",0,-1);
+  (G.agents||[]).forEach((a,i)=>{
+    const ang=-Math.PI/2+i*(6.283/11)+t*0.00025;
+    const px=cx+Math.cos(ang)*Math.min(w*0.42,280), py=cy+Math.sin(ang)*Math.min(h*0.36,78);
+    const col=a.vote==null?"#8C95A8":a.vote>0?"#3DDC97":a.vote<0?"#FF4D6D":"#8C95A8";
+    const pulse=a.key==="G-JUDGE"?(1+Math.sin(t*0.006)*0.08):1;
+    x.strokeStyle=col; x.globalAlpha=0.45; x.beginPath(); x.arc(px,py,16*pulse,0,6.28); x.stroke(); x.globalAlpha=1;
+    drawCritter(x,a.critter,px,py,13*pulse,a.color,t/1000,a.vote==null?"idle":a.vote>0?"pass":a.vote<0?"block":"info",(cx-px)/200,(cy-py)/200);
+    x.fillStyle=col; x.font="10px monospace"; x.textAlign="center"; x.fillText(a.vote==null?"n/a":(a.vote>0?"+"+a.vote:String(a.vote)), px, py+22);
+  });
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+"""
