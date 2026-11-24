@@ -65,6 +65,7 @@ def render_grok(svc, req) -> None:
     def _paint() -> None:
         components.html(desk_html(build_desk_payload(svc, br)), height=1080, scrolling=False)
     st.fragment(_paint, run_every=5 if br.running() else None)()
+    _audit_panel(svc, br)
     _connection(br)
     _mobile(svc, br)
     _copilot(svc, br)
@@ -201,6 +202,48 @@ def _team(svc, br) -> None:
             st.caption("Para sumar uno: una ficha (AGENTE, PREGUNTA, DATOS, CÁLCULO, VOTO, BLOQUEA SI, NO HACE, "
                        "LUGAR EN LA CADENA, CÓMO PROBARLO, PERSONAJE) y desk.agents.add(...). "
                        "Puede aprobar, informar o frenar. No sube el riesgo ni quita el stop.")
+
+
+def _audit_panel(svc, br) -> None:
+    """Pausa, salud y tamaño. Los botones no escriben rules.md."""
+    from engine.fgview.audit import health, screen_state
+
+    book = getattr(svc, "audit", None)
+    report = health(svc)
+    if report.get("banner"):
+        st.warning(report["banner"])
+    state = screen_state(rows=br.state().get("verdicts") or [], fetched_at=None)
+    if state["estado"] == "vacio":
+        st.caption("Veredictos: " + state["mensaje"])
+    with st.expander("Auditoría, tamaño y pausa"):
+        st.caption("Los pesos del score y esta pausa no son tus reglas. Una sugerencia no se aplica sola.")
+        a, b, c = st.columns(3)
+        if book is not None and a.button("Pausar 1h", key="au_1h"):
+            st.info(book.pause.press("1h"))
+            book.save()
+        if book is not None and b.button("Pausar hoy", key="au_hoy"):
+            st.info(book.pause.press("hoy"))
+            book.save()
+        if book is not None and c.button("Estoy bien", key="au_ok"):
+            st.info(book.pause.press("bien"))
+            book.save()
+        if book is not None and book.pause.active():
+            st.caption(book.pause.active())
+        if st.button("Ver pasos del tamaño", key="au_size"):
+            quote = br.tamano()
+            for step in quote.get("pasos") or []:
+                st.caption(step)
+            if quote.get("motivo"):
+                st.caption(quote["motivo"])
+        low = st.number_input("Zona vigilada, precio bajo", value=0.0, key="au_low", step=0.1)
+        high = st.number_input("Zona vigilada, precio alto", value=0.0, key="au_high", step=0.1)
+        if book is not None and st.button("Esperar entrada 20 min", key="au_arm"):
+            if high <= low:
+                st.error("La zona no tiene precios válidos.")
+            else:
+                book.entry.arm("DEMO", "LONG", low, high, "VERDE")
+                book.save()
+                st.caption("Vigilando 20 min. Si expira: no operar también es operar bien.")
 
 
 def _connection(br) -> None:
