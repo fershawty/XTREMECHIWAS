@@ -52,6 +52,11 @@ TOOL_AGENTS = {  # Qué agentes "se mueven" en la animación cuando Grok usa cad
     "fg_reporte": [],
     "fg_revision": ["CLOSER"],
     "fg_estado": ["CLOSER"],
+    "fg_auditoria": ["GATE", "PRICER", "EDGE"],
+    "fg_tamano": ["KELLY"],
+    "fg_vigilancia": ["CLOSER"],
+    "fg_salud": [],
+    "fg_entrada_vigilada": ["TAKER"],
 }
 
 
@@ -416,6 +421,94 @@ class GrokBridge:
         self._log("fg_reporte", {"id": ronda_id or "ultima"}, (out.get("reporte") or "n/a").splitlines()[0][:160])
         return out
 
+    def auditoria(self, symbol: str = "") -> dict:
+        """Checks de G-TRAP y score por partes. No cambia filtros ni reglas."""
+        from engine.fgview.audit import score_parts, trap_checks
+
+        dec = self.last_dec
+        if symbol and dec is not None and symbol.upper().split("/")[0] not in str(dec.symbol):
+            dec = None
+        raw = getattr(dec, "raw", {}) if dec is not None else {}
+        gate = None
+        if dec is not None:
+            gate = next((r for r in dec.results if r.agent == "GATE"), None)
+        data = {"direction": getattr(dec, "direction", None), "gate_block": bool(gate and gate.status == "block"),
+                "late": False, "spread_pct": None}
+        book = getattr(getattr(dec, "snap", None), "order_book", None) or {}
+        if book.get("spread_pct") is not None:
+            data["spread_pct"] = book.get("spread_pct")
+        if book.get("bid_vol10") is not None and book.get("ask_vol10") is not None:
+            data["depth_usd"] = float(book["bid_vol10"]) + float(book["ask_vol10"])
+        trap = trap_checks(data)
+        parts = {"mercado": raw.get("wscore"), "flujo": None, "funding": None,
+                 "trampa": 0 if trap["veredicto"] == "trampa" else (40 if trap["veredicto"] == "warn" else (
+                     None if trap["veredicto"] == "desconocido" else 80)),
+                 "trampa_estado": trap["veredicto"],
+                 "probabilidad": getattr(dec, "probability", None),
+                 "ventaja": None if getattr(dec, "edge_r", None) is None else max(0.0, min(100.0, 50 + dec.edge_r * 100))}
+        scored = score_parts(parts)
+        self._log("fg_auditoria", {"simbolo": symbol or (dec.symbol if dec else "")}, trap["linea"][:160])
+        return {"trampa": trap, "score": scored, "modo": "papel",
+                "nota": "Solo lectura. Los pesos no se guardan desde aquí."}
+
+    def tamano(self) -> dict:
+        """Pasos del tamaño con el riesgo de las reglas. No acepta un riesgo mayor."""
+        from decimal import Decimal
+
+        from engine.fgview.audit import size_ticket
+
+        dec = self.last_dec
+        plan = getattr(dec, "plan", None)
+        if dec is None or plan is None:
+            return {"ok": False, "motivo": "n/a · no hay plan de la mesa", "pasos": []}
+        try:
+            risk = float(self.s.copilot.rules.values()["risk_pct"])
+            fomo, _ = self.s.copilot.coach.fomo(getattr(getattr(dec, "snap", None), "df5", None), dec.direction)
+            bank = float(self.s.copilot.coach.bankroll())
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "motivo": f"n/a · {exc}"[:160], "pasos": []}
+        quote = size_ticket(bankroll=bank, risk_pct=risk, entry=plan.entry, stop=plan.stop_loss,
+                            direction=plan.direction or dec.direction, band="VERDE", fomo=fomo)
+        quote["stop"] = plan.stop_loss
+        quote["riesgo_reglas_pct"] = risk
+        quote["nota"] = "Usa el riesgo de tus reglas. Este cálculo no las cambia ni abre la orden."
+        self._log("fg_tamano", {}, (quote.get("motivo") or "tamaño")[:160])
+        for key in ("riesgo_usd", "nocional", "comision", "funding", "factor_banda", "factor_fomo", "liquidacion"):
+            if isinstance(quote.get(key), Decimal):
+                quote[key] = float(quote[key])
+        if isinstance(quote.get("distancia"), Decimal):
+            quote["distancia"] = float(quote["distancia"])
+        return quote
+
+    def vigilancia(self) -> dict:
+        from engine.fgview.audit import watch_position
+
+        book = getattr(self.s, "audit", None)
+        repeats = book.repeats if book is not None else {}
+        rows = []
+        for pos in self.s.positions.all():
+            rows.append({"id": pos.get("id"), "coin": pos.get("coin"),
+                         "alertas": watch_position(pos, pos.get("last_price"), repeats=repeats)})
+        if book is not None:
+            book.save()
+        self._log("fg_vigilancia", {}, f"{len(rows)} posiciones")
+        return {"posiciones": rows, "modo": "papel",
+                "nota": "Solo avisa. El stop no se aleja y no se abre ni se cierra nada desde aquí."}
+
+    def salud(self) -> dict:
+        from engine.fgview.audit import health
+
+        out = health(self.s)
+        self._log("fg_salud", {}, out.get("banner") or "salud")
+        return out
+
+    def entrada_vigilada(self) -> dict:
+        book = getattr(self.s, "audit", None)
+        item = book.entry.item if book is not None else None
+        self._log("fg_entrada_vigilada", {}, "lectura")
+        return {"entrada": item or {"state": "vacia", "mensaje": "No hay entrada vigilada."},
+                "nota": "Solo lectura. Armar la vigilancia se hace en la app, no por el conector."}
+
     def revision(self) -> dict:
         out = self.team.revision()
         best, worst = out.get("acerto_mas") or "n/a", out.get("equivoco_mas") or "n/a"
@@ -485,6 +578,31 @@ class GrokBridge:
                   annotations=ro)
         def fg_estado() -> dict:
             return self.estado()
+
+        @srv.tool(description="Auditoría de G-TRAP (pass/warn/fail/n/a) y score por partes de la última corrida. "
+                              "Solo lectura: no cambia filtros, pesos ni reglas.", annotations=ro)
+        def fg_auditoria(simbolo: str = "") -> dict:
+            return self.auditoria(simbolo)
+
+        @srv.tool(description="Pasos del tamaño usando el riesgo de las reglas y el stop del plan. No sube el riesgo, "
+                              "no mueve el stop y no abre la orden.", annotations=ro)
+        def fg_tamano() -> dict:
+            return self.tamano()
+
+        @srv.tool(description="Vigilancia de las posiciones en papel: stop, TP1, liquidación. Solo avisa. "
+                              "El stop no se aleja.", annotations=ro)
+        def fg_vigilancia() -> dict:
+            return self.vigilancia()
+
+        @srv.tool(description="Salud de Binance (si se conoce), base local, MCP y túnel. Si una fuente cae, lo dice "
+                              "y no inventa el dato.", annotations=ro)
+        def fg_salud() -> dict:
+            return self.salud()
+
+        @srv.tool(description="Estado de la entrada vigilada de 20 min, si hay una. Solo lectura: no la arma.",
+                  annotations=ro)
+        def fg_entrada_vigilada() -> dict:
+            return self.entrada_vigilada()
 
         @srv.tool(description="Las reglas del usuario (rules.md versionado). Solo lectura.", annotations=ro)
         def fg_reglas() -> dict:

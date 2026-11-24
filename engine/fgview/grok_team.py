@@ -474,8 +474,17 @@ class TrapVoter(_Voter):
             linea = f"squeeze {pts} pts ({risk or 'n/a'}) · VWAP z {_texto(None if z is None else round(float(z), 2))}"
             if late:
                 linea += " · precio estirado"
-            if gate is not None and gate.status == "block":
-                linea += " · GATE bloquea"
+        if gate is not None and gate.status == "block":
+            linea += " · GATE bloquea"
+        from engine.fgview.audit import trap_checks
+
+        audit = trap_checks({"direction": ctx.direction, "gate_block": bool(gate and gate.status == "block"),
+                             "late": late, "funding_pct": None, "spread_pct": None})
+        if audit["voto"] < voto or (audit["veredicto"] == "desconocido" and voto > 0):
+            voto = audit["voto"] if audit["voto"] <= 0 else voto
+        if audit["veredicto"] == "desconocido" and voto > 0:
+            voto = 0
+        linea = f"{linea} · {audit['linea']}"
         return GrokVote(self.key, voto, linea, nums)
 
 
