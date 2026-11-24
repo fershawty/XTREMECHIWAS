@@ -249,6 +249,13 @@ jobs:
           - **Windows**: `FGView-V2-Windows.zip` → descomprime y abre `FGView\FGView.exe`
           - **Mac Intel (macOS 12 Monterey o superior)**: `FGView-V2-macOS-Intel.dmg` → arrastra a Aplicaciones; la primera vez Control + clic → Abrir
 
+          **Novedades v5.3 · GROK DESK con el equipo de agentes de Grok**
+          - Nueva terminal animada de GROK DESK con el equipo de Grok en órbita (las esferas se iluminan según su voto y G-JUDGE pulsa con el veredicto).
+          - El equipo de Grok en código: votos, G-JUDGE con reglas fijas y rondas guardadas con su reporte (fg_ronda). Respeta al COACH, veta si la mesa dice NO OPERAR y nunca cambia el tamaño ni el stop.
+          - 10 herramientas MCP nuevas para Grok: ronda, reporte, revisión, estado, auditoría de trampas (pass/warn/fail/n/a), tamaño paso a paso, vigilancia de posiciones, salud y entrada vigilada; prompt «agentes_fg».
+          - Registro de fichas para sumar agentes nuevos a la mesa sin reescribir los 12.
+          - Token del conector oculto en pantalla. Todo por MCP es solo papel.
+
           **Novedades v5.2 · papel arreglado + 📲 Telegram + 📱 app de iPhone**
           - Arreglo: en papel el piloto casi nunca abría nada (solo entraba en OPERAR). Nuevo «🧪 Papel de aprendizaje» (encendido por defecto): en PAPEL abre lo más recomendado aunque la mesa diga ESPERAR o NO OPERAR, con riesgo reducido y marcado APRENDIZAJE. No cuenta para desbloquear el real y nunca aplica en real.
           - La mesa analiza todas las candidatas y luego envía solo la elegida (antes podía enviar la primera aunque una posterior fuera mejor).
