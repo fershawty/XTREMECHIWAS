@@ -256,7 +256,7 @@ jobs:
           - Seguridad: por MCP no existen órdenes reales (solo análisis y papel), token secreto en la dirección, y Grok puede frenar pero no forzar.
           - Se retira el Analista IA por API de la v4.9.
 
- (agente 13) con Grok**
+          **Novedades v4.9 · Analista IA por API (retirado en la v5.0)**
           - Una IA real revisa la operación que armó la mesa (con noticias y contexto) y da su segunda opinión: ✅ APRUEBA, ⚠️ PRECAUCIÓN (baja a ESPERAR con riesgo mínimo) o ⛔ VETA (NO OPERAR). Solo puede frenar: nunca sube el riesgo ni cambia el SL.
           - Grok (xAI) por defecto; también Claude. Tutorial paso a paso dentro de FG DESK. Ojo: la suscripción de Grok de ~$30 NO incluye la API; la API se paga aparte por uso en console.x.ai (≈ 1 centavo por análisis con Grok 4.7).
           - Tope diario de gasto, reutiliza la opinión 10 min y solo se llama cuando hay operación candidata. Marcador que mide si sus vetos aciertan.
