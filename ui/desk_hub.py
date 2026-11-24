@@ -1,7 +1,7 @@
 """
 ui/desk_hub.py
 ==============
-«LA RED»: los 12 agentes de FG DESK alrededor del núcleo FG, con su dato en vivo.
+«LA RED»: los 13 agentes de FG DESK alrededor del núcleo FG, con su dato en vivo.
 
 Cada tarjeta muestra el personaje del agente, su nombre y lo que acaba de medir; las líneas
 llevan pulsos al núcleo (verde = aprueba, rojo = bloquea, gris = sin datos). El agente que
@@ -34,6 +34,8 @@ def hub_payload(dec) -> dict:
             val = f"ventaja {dec.edge_r:+.2f}R"
         elif r is not None and k == "KELLY" and dec.risk_pct is not None:
             val = f"riesgo {dec.risk_pct:.2f}% · {dec.plan.leverage}x" if dec.plan else f"riesgo {dec.risk_pct:.2f}%"
+        elif r is not None and k == "ANALYST":
+            val = r.headline.split(": ", 1)[-1][:40]
         elif r is not None and k in ("WHALE", "FLOW", "FUNDING") and r.value is not None:
             val = f"{_short(r)[:26]} · {r.value:+.2f}"
         agents.append({"key": k, "color": color, "status": r.status if r else "idle", "value": val, "role": role})
@@ -56,7 +58,7 @@ _TEMPLATE = r"""
 <div id="wrap" style="position:relative;height:__H__px;border-radius:16px;overflow:hidden;border:1px solid rgba(212,175,55,.18);
  background:radial-gradient(ellipse at 50% 50%,#101624 0%,#070a10 60%,#04060a 100%);font-family:'JetBrains Mono',ui-monospace,monospace">
  <canvas id="c" style="position:absolute;inset:0;width:100%;height:100%"></canvas>
- <div style="position:absolute;left:16px;top:12px;font-size:11px;letter-spacing:.2em;color:#C9CED8">12 AGENTES → UN NÚCLEO FG · <span style="color:#F2D27A">SEÑALES EN TIEMPO REAL</span></div>
+ <div style="position:absolute;left:16px;top:12px;font-size:11px;letter-spacing:.2em;color:#C9CED8">13 AGENTES → UN NÚCLEO FG · <span style="color:#F2D27A">SEÑALES EN TIEMPO REAL</span></div>
  <div id="on" style="position:absolute;right:16px;top:12px;font-size:11px;letter-spacing:.1em;color:#3DDC97"></div>
 </div>
 <style>body{margin:0;background:transparent;overflow:hidden}</style>

@@ -15,6 +15,7 @@ Personajes de los agentes de FG DESK (originales de FG VIEW, dibujados en canvas
     FUNDING  moneda que gira con borde dentado                       (lima)
     GATE     señal octagonal con pluma de barrera (sube si pasa)     (rojo)
     GUARD    tortuga con caparazón hexagonal                         (índigo)
+    ANALYST  cerebro flotante con chispas neuronales (IA real)       (lila claro)
 
 Expresiones: pass = sonríe · block = ceño fruncido y X roja · info = neutral · idle = dormido.
 Los ojos parpadean y miran hacia donde trabajan.
@@ -125,6 +126,14 @@ function drawCritter(x,key,px,py,s,color,t,mood,lx,ly){
     hx(px,py-s*.45,s*.28); hx(px-s*.5,py-s*.15,s*.24); hx(px+s*.5,py-s*.15,s*.24);
     const fx=px, fy=py+s*.38; x.fillStyle=_shade(color,1.15); x.beginPath(); x.ellipse(fx,fy,s*.62,s*.42,0,0,6.283); x.fill();
     _eye(x,fx-s*.24,fy-s*.06,s*.17,t,mood,lx,ly,11); _eye(x,fx+s*.24,fy-s*.06,s*.17,t,mood,lx,ly,11.2); _brows(x,fx-s*.24,fx+s*.24,fy-s*.06,s*.17,mood,0); _mouth(x,fx,fy+s*.22,s*.26,mood);
+  } else if(key==='ANALYST'){ // Cerebro flotante con chispas neuronales
+    for(let k=0;k<6;k++){const a=t*1.6+k*1.047, rr=s*1.35+Math.sin(t*3+k)*s*.08, sx=px+Math.cos(a)*rr, sy=py+Math.sin(a)*rr*.75;
+      x.strokeStyle=_rgba('#FFF4C8',.35+.35*Math.sin(t*5+k)); x.lineWidth=Math.max(1,s*.05); x.beginPath(); x.moveTo(px+Math.cos(a)*s*.9,py+Math.sin(a)*s*.7); x.lineTo(sx,sy); x.stroke();
+      x.fillStyle=_rgba('#FFF4C8',.9); x.beginPath(); x.arc(sx,sy,s*.08,0,6.283); x.fill();}
+    x.fillStyle=_body(x,px,py,s,color); x.beginPath(); x.ellipse(px-s*.36,py-s*.08,s*.62,s*.8,-.15,0,6.283); x.ellipse(px+s*.36,py-s*.08,s*.62,s*.8,.15,0,6.283); x.fill(); outline();
+    x.strokeStyle=_shade(color,.6); x.lineWidth=s*.07; x.beginPath(); x.moveTo(px,py-s*.85); x.lineTo(px,py+s*.6);
+    [-1,1].forEach(d=>{x.moveTo(px+d*s*.2,py-s*.55); x.quadraticCurveTo(px+d*s*.55,py-s*.75,px+d*s*.75,py-s*.45); x.moveTo(px+d*s*.15,py+s*.25); x.quadraticCurveTo(px+d*s*.6,py+s*.35,px+d*s*.8,py+s*.1);}); x.stroke();
+    _eye(x,px-s*.3,py-s*.08,s*.2,t,mood,lx,ly,12); _eye(x,px+s*.3,py-s*.08,s*.2,t,mood,lx,ly,12.2); _brows(x,px-s*.3,px+s*.3,py-s*.08,s*.2,mood,0); _mouth(x,px,py+s*.38,s*.3,mood);
   } else { // CLOSER: fantasma guardián con escudo
     x.fillStyle=_body(x,px,py,s,color); x.beginPath(); x.moveTo(px-s*.9,py+s*.9); x.lineTo(px-s*.9,py-s*.1); x.arc(px,py-s*.1,s*.9,Math.PI,0); x.lineTo(px+s*.9,py+s*.9);
     for(let k=0;k<4;k++){const wx=px+s*.9-(k+1)*s*.45; x.quadraticCurveTo(wx+s*.22,py+s*(k%2?.7:1.15)+Math.sin(t*5+k)*s*.06,wx,py+s*.9);} x.fill(); outline();

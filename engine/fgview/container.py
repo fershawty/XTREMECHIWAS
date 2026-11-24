@@ -118,5 +118,8 @@ class FGServices:
 
         inst.ladder_desk = DeskLadder(db, journal)
         inst.desk = Desk(inst, config)
+        from engine.fgview.analyst import AIAnalyst
+
+        inst.desk.analyst = AIAnalyst(db)
         inst.autopilot = Autopilot(inst.desk)
         return inst
