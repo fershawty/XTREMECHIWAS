@@ -72,10 +72,11 @@ class FGServices:
     burnout: BurnOutStrategy | None = None
     swing: SwingPlanner | None = None
     reviewer: HistoryReviewer | None = None
-    desk: object | None = None  # FG DESK (6 agentes)
+    desk: object | None = None  # FG DESK (12 agentes + registro de fichas)
     ladder_desk: object | None = None  # 🪜 Modo escalera de la mesa
-    grok: object | None = None  # 🤖 GROK DESK: puente MCP para los agentes de Grok
+    grok: object | None = None  # 🤖 GROK DESK: equipo Grok (votos, G-JUDGE, rondas) y puente MCP
     copilot: object | None = None  # 🧭 Copiloto: Trade Card, COACH, reglas y SCRIBE
+    audit: object | None = None  # Auditoría, tamaño, pausa y entrada vigilada (no toca rules.md)
     telegram: object | None = None  # 📲 Bot de Telegram del copiloto
     autopilot: object | None = None  # Piloto automático de la mesa
     extras: dict = field(default_factory=dict)
@@ -126,7 +127,9 @@ class FGServices:
         from engine.fgview.grok_mcp import GrokBridge
 
         inst.copilot = Copilot(inst)
+        from engine.fgview.audit import AuditBook
 
+        inst.audit = AuditBook(getattr(positions, "db", None))
         inst.grok = GrokBridge(inst)
         from engine.fgview.telegram_bot import TelegramCopilot
 

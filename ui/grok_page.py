@@ -13,17 +13,13 @@ from __future__ import annotations
 import streamlit as st
 import streamlit.components.v1 as components
 
-from ui import desk_anim as anim
-from ui.components import _logo_svg
-from ui.desk_hub import hub_html
-from ui.desk_page import _capital
-from ui.desk_terminal import build_payload, terminal_html
+from ui.grok_desk_view import build_desk_payload, desk_html
 from ui.mode import guide
 
 TUTORIAL = """
 **Qué necesitas:** tu cuenta de **Grok** (la suscripción de ~$30 sirve para usar Grok en grok.com; revisa en
 **grok.com → Connectors** que tu plan permita conectores personalizados) y **FG VIEW abierto en tu PC**.
-No hace falta API key de xAI: Grok usa tu suscripción y FG VIEW pone los datos y los 12 agentes.
+No hace falta API key de xAI: Grok usa tu suscripción y FG VIEW pone los datos, la mesa de 12 agentes y el equipo de 11.
 
 **1 · Enciende el servidor MCP** (aquí abajo, «🔌 Servidor MCP»). Queda escuchando en tu PC, en `127.0.0.1`.
 
@@ -37,10 +33,10 @@ y gratis es **Cloudflare Tunnel**:
 **dirección del conector** que te da esta página (termina en `/mcp/<token>`). Guarda.
 
 **4 · Úsalo desde el chat de Grok.** Ejemplos:
-- «Usa FG VIEW: corre la mesa en SOL y dime si conviene entrar.»
-- «Con FG VIEW escanea las criptos y analiza la mejor.»
-- «¿Qué dijeron las ballenas y el funding? Da tu veredicto con grok_veredicto.»
-- «Si apruebas, ábrela en papel.»
+- «ronda» (G-SCOUT elige hasta 3) o «ronda SOL».
+- «¿cómo vamos?» y «revisión».
+- «Usa FG VIEW: fg_ronda en DEMO y pégame el reporte.»
+- «Si el juez aprueba, ábrela en papel.» El juez no mueve el stop ni el tamaño.
 
 Mientras Grok trabaja, aquí verás a los agentes moverse y su veredicto en vivo.
 
@@ -58,32 +54,118 @@ def render_grok(svc, req) -> None:
     if br is None:
         st.error("El puente MCP no está disponible en esta instalación.")
         return
-    guide("GROK DESK es la misma mesa de 12 agentes de FG DESK, pero quien la maneja son los agentes de Grok desde "
-          "grok.com, conectados por MCP. Tú le escribes a Grok; Grok usa FG VIEW como herramienta y aquí ves en vivo "
-          "qué agente consulta y qué decide.",
-          ["Enciende el servidor MCP y abre el túnel (tutorial).",
-           "Agrega FG VIEW como conector en grok.com.",
-           "Pídele a Grok que corra la mesa: aquí se anima todo."],
-          "Todo lo que Grok haga por aquí es análisis o modo papel: no hay órdenes reales por MCP.")
+    st.markdown(_PAGE_CSS, unsafe_allow_html=True)
+    guide("GROK DESK es el puesto del equipo de 11 agentes. Orbitan el núcleo, votan de −2 a +2 y G-JUDGE decide "
+          "con reglas fijas. El interruptor automático no toca tus reglas ni la hora límite. Solo papel.",
+          ["Enciende el servidor y, si quieres, el modo automático.",
+           "Una ronda manual desde aquí corre aunque el automático esté apagado.",
+           "Si un número no está, la terminal dice n/a."],
+          "Por MCP y por la app de iPhone no hay órdenes reales. El token del conector se muestra enmascarado.")
+    _controls(br)
+    def _paint() -> None:
+        components.html(desk_html(build_desk_payload(svc, br)), height=1080, scrolling=False)
+    st.fragment(_paint, run_every=5 if br.running() else None)()
+    _audit_panel(svc, br)
     _connection(br)
     _mobile(svc, br)
     _copilot(svc, br)
-    stt = br.state()
-    ev = stt["events"]
-    last_ev = ev[-1] if ev else None
-    recent = last_ev and (__import__("time").time() - last_ev.get("ts", 0) < 90)
-    focus = last_ev["agents"] if recent else []
-    gtxt = f"{last_ev['tool']} · {last_ev['summary'][:40]}" if recent else ("esperando a Grok…" if br.running() else "servidor apagado")
-    dec = br.last_dec
-    st.markdown("### 🕸️ La red · Grok → MCP → 12 agentes FG")
-    components.html(hub_html(dec, _logo_svg(), grok=True, focus=focus, grok_text=gtxt), height=604)
     _feed(br)
-    components.html(terminal_html(build_payload(svc, dec, None, _capital()), _logo_svg()), height=1470)
-    a, b = st.columns([1.55, 1])
-    with a:
-        components.html(anim.fan_html(dec.fan if dec else None, dec.tm if dec else None), height=338)
-    with b:
-        components.html(anim.radar_html(dec.radar if dec else None), height=338)
+
+
+_PAGE_CSS = """
+<style>
+section.main [data-testid="stVerticalBlock"]{gap:0.4rem}
+div[data-testid="stMarkdownContainer"] h3{letter-spacing:.08em}
+</style>
+"""
+
+
+def _controls(br) -> None:
+    from engine.fgview.grok_mcp import mask_secret
+
+    stt = br.state()
+    on = br.running()
+    try:
+        cutoff = br.s.copilot.rules.values().get("cutoff") or "n/a"
+        every = int(getattr(br.s.autopilot, "every_s", 60) or 60)
+    except Exception:  # noqa: BLE001
+        cutoff, every = "n/a", "n/a"
+    c = st.columns([1.1, 1.3, 1.1, 1.5])
+    c[0].caption(f"Servidor MCP · {'encendido' if on else 'apagado'}")
+    if not on:
+        if c[0].button("▶ Encender servidor", type="primary", key="gk_start", width="stretch"):
+            try:
+                st.toast(br.start(int(stt["port"])))
+            except Exception as exc:  # noqa: BLE001
+                st.error(f"No se pudo encender: {exc}")
+            st.rerun()
+    elif c[0].button("⏹ Apagar servidor", key="gk_stop", width="stretch"):
+        br.stop()
+        st.rerun()
+    auto = c[1].toggle("Modo automático Grok", value=br.auto_on(), key="gk_auto",
+                       help="Si está apagado, fg_ronda por el conector no corre. No cambia las reglas.")
+    if auto != br.auto_on():
+        br.set(auto=bool(auto))
+        st.rerun()
+    c[2].caption(f"Intervalo {every}s · hora límite {cutoff}")
+    c[2].caption("Solo información. El interruptor no los cambia.")
+    sym = c[3].text_input("Ronda manual", value="DEMO", key="gk_round_sym", label_visibility="collapsed",
+                          placeholder="DEMO")
+    b1, b2 = c[3].columns(2)
+    paper = b1.checkbox("Papel si aprueba", value=False, key="gk_round_paper")
+    if b2.button("Correr", key="gk_round_go", width="stretch"):
+        with st.spinner("La mesa calcula y el equipo vota…"):
+            try:
+                br.ronda(sym, "Auto", abrir_en_papel=paper, manual=True)
+            except Exception as exc:  # noqa: BLE001
+                st.error(f"La ronda no se pudo cerrar: {exc}")
+            else:
+                st.rerun()
+    st.caption("Conector " + mask_secret(br.public_url() or br.local_url())
+               + " · el token no se muestra completo. Túnel: "
+               + (stt.get("tunnel") or "sin túnel"))
+
+
+def _audit_panel(svc, br) -> None:
+    """Pausa, salud y tamaño. Los botones no escriben rules.md."""
+    from engine.fgview.audit import health, screen_state
+
+    book = getattr(svc, "audit", None)
+    report = health(svc)
+    if report.get("banner"):
+        st.warning(report["banner"])
+    state = screen_state(rows=br.state().get("verdicts") or [], fetched_at=None)
+    if state["estado"] == "vacio":
+        st.caption("Veredictos: " + state["mensaje"])
+    with st.expander("Auditoría, tamaño y pausa"):
+        st.caption("Los pesos del score y esta pausa no son tus reglas. Una sugerencia no se aplica sola.")
+        a, b, c = st.columns(3)
+        if book is not None and a.button("Pausar 1h", key="au_1h"):
+            st.info(book.pause.press("1h"))
+            book.save()
+        if book is not None and b.button("Pausar hoy", key="au_hoy"):
+            st.info(book.pause.press("hoy"))
+            book.save()
+        if book is not None and c.button("Estoy bien", key="au_ok"):
+            st.info(book.pause.press("bien"))
+            book.save()
+        if book is not None and book.pause.active():
+            st.caption(book.pause.active())
+        if st.button("Ver pasos del tamaño", key="au_size"):
+            quote = br.tamano()
+            for step in quote.get("pasos") or []:
+                st.caption(step)
+            if quote.get("motivo"):
+                st.caption(quote["motivo"])
+        low = st.number_input("Zona vigilada, precio bajo", value=0.0, key="au_low", step=0.1)
+        high = st.number_input("Zona vigilada, precio alto", value=0.0, key="au_high", step=0.1)
+        if book is not None and st.button("Esperar entrada 20 min", key="au_arm"):
+            if high <= low:
+                st.error("La zona no tiene precios válidos.")
+            else:
+                book.entry.arm("DEMO", "LONG", low, high, "VERDE")
+                book.save()
+                st.caption("Vigilando 20 min. Si expira: no operar también es operar bien.")
 
 
 def _connection(br) -> None:
@@ -92,30 +174,24 @@ def _connection(br) -> None:
     st.markdown(f"### 🔌 Servidor MCP · {'🟢 ENCENDIDO' if on else '⚪ apagado'}")
     with st.expander("📘 Tutorial: cómo conectar FG VIEW con los agentes de Grok (MCP)", expanded=not stt.get("tunnel")):
         st.markdown(TUTORIAL)
-    c = st.columns([1, 1, 2.2], vertical_alignment="bottom")
+    c = st.columns([1, 2.2], vertical_alignment="bottom")
     port = c[0].number_input("Puerto", 1024, 65535, int(stt["port"]), key="gk_port", disabled=on)
-    if not on:
-        if c[1].button("▶ Encender servidor", type="primary", key="gk_start", width="stretch"):
-            try:
-                st.toast(br.start(int(port)))
-            except Exception as exc:  # noqa: BLE001
-                st.error(f"No se pudo encender: {exc}")
-            st.rerun()
-    elif c[1].button("⏹ Apagar servidor", key="gk_stop", width="stretch"):
-        br.stop()
-        st.rerun()
-    tunnel = c[2].text_input("Dirección del túnel (https://…trycloudflare.com)", value=stt.get("tunnel", ""), key="gk_tunnel",
+    if int(port) != int(stt["port"]):
+        stt = br.set(port=int(port))
+    tunnel = c[1].text_input("Dirección del túnel (https://…trycloudflare.com)", value=stt.get("tunnel", ""), key="gk_tunnel",
                              placeholder="https://algo-raro.trycloudflare.com")
     if tunnel != stt.get("tunnel", ""):
         stt = br.set(tunnel=tunnel.strip())
     st.caption("1) Comando del túnel (en otra terminal):")
     st.code(f"cloudflared tunnel --url http://127.0.0.1:{int(stt['port'])}", language="bash")
+    from engine.fgview.grok_mcp import mask_secret
+
     url = br.public_url()
     if url:
-        st.caption("2) Dirección del conector para pegar en grok.com → Connectors → Custom:")
-        st.code(url, language="text")
+        st.caption("2) Dirección del conector (token enmascarado) para grok.com → Connectors → Custom:")
+        st.code(mask_secret(url), language="text")
     else:
-        st.caption("2) Pega arriba la dirección https:// del túnel y aquí aparecerá la dirección del conector para Grok.")
+        st.caption("2) Pega arriba la dirección https:// del túnel. El token del conector queda enmascarado.")
     x, y = st.columns([1, 3])
     if x.button("🔁 Nuevo token", key="gk_tok", help="Invalida la dirección anterior (hay que actualizarla en Grok)."):
         br.new_token()
@@ -123,7 +199,10 @@ def _connection(br) -> None:
             br.stop()
             br.start(int(stt["port"]))
         st.rerun()
-    y.caption(f"Dirección local (solo tu PC): `{br.local_url()}` · Para usarlo sin la app: `python -m engine.fgview.grok_mcp`")
+    from engine.fgview.grok_mcp import mask_secret
+
+    y.caption("Dirección local (token enmascarado): `" + mask_secret(br.local_url())
+              + "` · Sin la app: `python -m engine.fgview.grok_mcp`")
 
 
 TELEGRAM_TUTORIAL = """
@@ -176,13 +255,15 @@ def _mobile(svc, br) -> None:
                 st.caption(f"⚠️ {ign} mensajes de otros chats ignorados.")
     with b:
         st.markdown("### 📱 App de iPhone")
+        from engine.fgview.grok_mcp import mask_secret
+
         url = br.app_url()
         if url:
-            st.caption("Ábrela en Safari y agrégala a inicio:")
-            st.code(url, language="text")
+            st.caption("Ábrela en Safari y agrégala a inicio (token enmascarado):")
+            st.code(mask_secret(url), language="text")
         else:
             st.caption("Pega la dirección del túnel arriba para obtener el link de la app.")
-        st.caption(f"En esta PC (con el servidor encendido): `{br.app_url(local=True)}`")
+        st.caption("En esta PC (token enmascarado): `" + mask_secret(br.app_url(local=True) or "") + "`")
         with st.expander("📘 Tutorial de la app de iPhone"):
             st.markdown(IPHONE_TUTORIAL)
 
