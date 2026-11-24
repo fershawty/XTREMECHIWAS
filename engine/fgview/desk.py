@@ -1,17 +1,22 @@
 """
 engine/fgview/desk.py
 =====================
-FG DESK: mesa de 6 agentes para operaciones CORTAS en futuros (15–30 min).
+FG DESK: mesa de 12 agentes para operaciones CORTAS en futuros de Binance (15–30 min).
 
 Cada decisión pasa por una cadena; si un agente bloquea, no se opera:
 
     🔭 SPOTTER  lee el mercado: 6 filtros (ponderados por la rotación de señales), libro de
                 órdenes (desequilibrio compradores/vendedores) y bandas Z del VWAP.
+    🐋 WHALE    ballenas: operaciones agresivas grandes (aggTrades) + top traders de Binance.
+    🌊 FLOW     flujo: compras vs ventas a mercado (taker ratio 30 min) + open interest 1 h.
+    💸 FUNDING  funding: si la gente ya está demasiado cargada de un lado o el cobro está por llegar.
+    🚧 GATE     compuerta anti-squeeze: agotamiento, long/short ratio y apalancamiento máximo seguro.
     📚 PRIOR    probabilidad base: cómo le fue a ESTE plan en situaciones parecidas (90 días).
     🔮 PRICER   Time Machine (100,000 caminos) + calibración -> probabilidad real de TP1.
     ⚖️ EDGE     ventaja neta (después de comisiones) en R + guardias: squeeze, long/short ratio,
                 noticias, stop diario, anti-revancha, correlación, liquidación.
     📐 KELLY    tamaño: ¼ de Kelly de la distribución simulada, nunca más que la tabla de capital.
+    🛡️ GUARD    stop guard + escalera de TPs: SL fuera del ruido, breakeven tras TP1, trailing y tiempo máximo.
     🎯 TAKER    prepara la orden (post-only, SL obligatorio, trailing) y la envía si el piloto está activo.
     🧹 CLOSER   gestiona lo abierto: escudo anti-squeeze, trailing y cierres de papel.
 
@@ -35,13 +40,20 @@ from engine.fgview.plan import Plan
 from engine.fgview.timemachine import TimeMachine, TimeMachineResult
 from engine.position_simulator import fmt_pct, fmt_px, fmt_usd
 
-AGENTS = ("SPOTTER", "PRIOR", "PRICER", "EDGE", "KELLY", "TAKER", "CLOSER")
+AGENTS = ("SPOTTER", "WHALE", "FLOW", "FUNDING", "GATE", "PRIOR", "PRICER", "EDGE", "KELLY", "GUARD", "TAKER",
+          "CLOSER")
+FLOW_AGENTS = ("WHALE", "FLOW", "FUNDING")  # Votan a favor (+1) o en contra (−1) de la dirección
 AGENT_META = {
     "SPOTTER": ("🔭", "#3DDC97", "Lee el mercado"),
+    "WHALE": ("🐋", "#3B82F6", "Ballenas y top traders"),
+    "FLOW": ("🌊", "#2DD4BF", "Flujo taker + OI"),
+    "FUNDING": ("💸", "#A3E635", "Funding y saturación"),
+    "GATE": ("🚧", "#FF4D6D", "Compuerta anti-squeeze"),
     "PRIOR": ("📚", "#F5A623", "Probabilidad base"),
     "PRICER": ("🔮", "#B388FF", "Time Machine"),
     "EDGE": ("⚖️", "#FF5C8A", "Ventaja neta + guardias"),
     "KELLY": ("📐", "#5AC8FA", "Tamaño óptimo"),
+    "GUARD": ("🛡️", "#A5B4FC", "Stop guard + TPs"),
     "TAKER": ("🎯", "#F2D27A", "Ejecución"),
     "CLOSER": ("🧹", "#FF8A3D", "Gestión y cierre"),
 }
@@ -108,6 +120,9 @@ class DeskDecision:
             add("Long/Short", v, v >= 30)
         if "squeeze" in r:
             add("Anti-squeeze", 100 - r["squeeze"] * 25, r["squeeze"] < 3)
+        votes = [v for v in (r.get("votes") or {}).values() if v is not None]
+        if votes:
+            add("Flujo", 50 + 50 * sum(votes) / len(votes), sum(votes) >= 0)
         if self.probability is not None:
             add("P(TP1)", self.probability, self.probability >= 55)
         if self.edge_r is not None:
@@ -126,6 +141,7 @@ class DeskDecision:
         if self.ticket is None:
             return "NO OPERAR"
         hard = (self.edge_r is not None and self.edge_r < -0.02) or (self.probability or 0) < 50 or any(
+            r.agent == "GATE" and r.status == "block" for r in self.results) or any(
             r.agent == "EDGE" and r.status == "block" and "⛔" in r.headline and "ventaja" not in r.headline.split("⛔")[-1]
             for r in self.results)
         return "NO OPERAR" if hard else "ESPERAR"
@@ -277,6 +293,9 @@ class Desk:
         self.send_wait = False  # El piloto también entra en ESPERAR (riesgo reducido) si el usuario lo activa
         self.rotation = SignalRotation(services.filters)
         self.calibrator = Calibrator(services.time_machine, config)
+        from engine.fgview.flowfeed import FlowFeed
+
+        self.flow = FlowFeed()  # Datos de Binance para WHALE/FLOW/FUNDING (None = desactivado)
 
     @staticmethod
     def tape(snap, bars: int = 80) -> dict | None:
@@ -397,6 +416,104 @@ class Desk:
                           ms=(time.perf_counter() - t0) * 1000)
         return res, snap, rep, rot, wscore
 
+    # ---------------------------------------------------------------- agentes de flujo (Binance)
+    @staticmethod
+    def _clip(v: float) -> float:
+        return float(max(-1.0, min(1.0, v)))
+
+    def whale_agent(self, flow, pos, direction: str) -> tuple[AgentResult, float | None]:
+        t0, d = time.perf_counter(), 1 if direction == "LONG" else -1
+        parts, vote, w = [], 0.0, 0.0
+        net = flow.whale_net if flow is not None else None
+        if net is not None:
+            vote += 0.6 * net * d
+            w += 0.6
+            parts.append(f"{flow.whale_n} ballenas · {fmt_usd(flow.whale_buy_usd)} compran / {fmt_usd(flow.whale_sell_usd)} venden")
+        elif flow is not None and flow.whale_buy_usd is not None:
+            parts.append("sin operaciones de ballena recientes")
+        top = getattr(pos, "top_long_pct", None)
+        if top is not None:
+            vote += 0.4 * self._clip((top - 50) / 20) * d
+            w += 0.4
+            parts.append(f"top traders {top:.0f}% largos")
+        if not w:
+            return AgentResult("WHALE", "info", "Sin datos de ballenas (DEMO o sin conexión a Binance): no vota",
+                               ms=(time.perf_counter() - t0) * 1000), None
+        v = vote / w
+        st = "block" if v <= -0.45 else "pass"
+        head = " · ".join(parts) + (f" · ⛔ las ballenas van en contra del {direction}" if st == "block" else
+                                    f" · a favor {v:+.2f}" if v > 0.15 else f" · neutral {v:+.2f}")
+        return AgentResult("WHALE", st, head, value=v, ms=(time.perf_counter() - t0) * 1000), v
+
+    def flow_agent(self, flow, df5: pd.DataFrame, direction: str) -> tuple[AgentResult, float | None]:
+        t0, d = time.perf_counter(), 1 if direction == "LONG" else -1
+        ratio, src = (flow.taker_ratio if flow is not None else None), "taker 30 min"
+        if ratio is None and len(df5) >= 6:  # Aproximación con velas: volumen de velas alcistas vs bajistas
+            w = df5.iloc[-6:]
+            up = float(w.loc[w["close"] >= w["open"], "volume"].sum())
+            dn = float(w.loc[w["close"] < w["open"], "volume"].sum())
+            ratio, src = (up / dn if dn > 0 else 2.0), "aprox. por velas"
+        if ratio is None:
+            return AgentResult("FLOW", "info", "Sin datos de flujo: no vota", ms=(time.perf_counter() - t0) * 1000), None
+        v = self._clip((ratio - 1) * 4) * d
+        oi = flow.oi_change_pct if flow is not None else None
+        head = f"compras/ventas a mercado {ratio:.2f} ({src})"
+        if oi is not None:
+            # OI subiendo confirma el movimiento; bajando = cierre de posiciones (movimiento débil)
+            v = 0.75 * v + 0.25 * (self._clip(oi / 2) if v >= 0 else -self._clip(oi / 2))
+            head += f" · open interest {oi:+.2f}% en 1 h"
+        st = "block" if v <= -0.45 else "pass"
+        head += (f" · ⛔ el flujo empuja en contra del {direction}" if st == "block" else
+                 f" · a favor {v:+.2f}" if v > 0.15 else f" · neutral {v:+.2f}")
+        return AgentResult("FLOW", st, head, value=v, ms=(time.perf_counter() - t0) * 1000), v
+
+    def funding_agent(self, flow, snap_funding: float | None, direction: str) -> tuple[AgentResult, float | None]:
+        t0, d = time.perf_counter(), 1 if direction == "LONG" else -1
+        f = flow.funding if flow is not None and flow.funding is not None else snap_funding
+        if f is None:
+            return AgentResult("FUNDING", "info", "Sin dato de funding: no vota", ms=(time.perf_counter() - t0) * 1000), None
+        mins = flow.funding_min if flow is not None else None
+        pays = f * d > 0  # LONG paga con funding positivo; SHORT con negativo
+        v = self._clip(-f * d / 0.0005)  # Funding a tu favor = la multitud está del otro lado
+        head = f"funding {f * 100:+.4f}% · {'pagas' if pays else 'cobras'}"
+        if mins is not None:
+            head += f" · cobro en {mins:.0f} min"
+        st = "pass"
+        if pays and abs(f) >= 0.0005:
+            st, head = "block", head + " · ⛔ demasiada gente ya está de tu lado (riesgo de barrida)"
+        elif pays and mins is not None and mins < 10 and abs(f) >= 0.0002:
+            st, head = "block", head + " · ⛔ el cobro de funding está por llegar y te toca pagar"
+        return AgentResult("FUNDING", st, head, value=v, ms=(time.perf_counter() - t0) * 1000), v
+
+    @staticmethod
+    def gate_agent(sq, direction: str) -> AgentResult:
+        t0 = time.perf_counter()
+        head = f"squeeze {sq.points} pts ({sq.risk}) · peor movimiento {sq.max_move_pct:.2f}% → máx. seguro {sq.lev_cap}x"
+        if sq.reasons:
+            head += " · " + sq.reasons[0][:70]
+        st = "block" if sq.risk == "alto" else "pass"
+        if st == "block":
+            head += f" · ⛔ {sq.label}"
+        return AgentResult("GATE", st, head, value=float(sq.points), ms=(time.perf_counter() - t0) * 1000)
+
+    @staticmethod
+    def guard_agent(plan: Plan, snap) -> tuple[AgentResult, dict]:
+        """Stop guard + escalera de TPs: el SL tiene que quedar fuera del ruido normal de 5 min."""
+        t0 = time.perf_counter()
+        noise = (snap.atr5 / snap.price * 100) if getattr(snap, "atr5", None) and snap.price else None
+        ratio = plan.sl_pct / noise if noise else None
+        hold = 45 if ratio is not None and ratio >= 2.5 else 30
+        tps = " → ".join(f"TP{i + 1} {fmt_pct(p)} ({c:g}%)" for i, (_, p, c) in enumerate(plan.tps))
+        head = f"SL −{plan.sl_pct:.2f}%"
+        if ratio is not None:
+            head += f" ({ratio:.1f}× el ruido de 5 min)"
+        head += f" · {tps} · breakeven tras TP1 · trailing · máx. {hold} min · liq. ≥ 3× SL"
+        st = "pass"
+        if ratio is not None and ratio < 0.8:
+            st, head = "info", head + " · ⚠️ SL dentro del ruido: puede saltar por movimiento normal"
+        return AgentResult("GUARD", st, head, value=ratio, ms=(time.perf_counter() - t0) * 1000), {
+            "max_hold_min": hold, "trailing": True}
+
     def run(self, symbol: str, market: str, capital: float, exchange: str | None = None, direction: str = "Auto",
             calibrate: bool = True, fan: bool = True, send_mode: str | None = None,
             operable: bool | None = None, ladder_risk: float | None = None) -> DeskDecision:
@@ -415,13 +532,29 @@ class Desk:
         if res.status == "block" and not operable:
             return dec
         coin = s.tiers.resolve(symbol)
-        # --- PRIOR ---
-        t0 = time.perf_counter()
+        # --- WHALE · FLOW · FUNDING (datos de Binance) ---
         pos = s.recommender.positioning.get(coin) if (market == "crypto" and s.recommender.positioning) else None
+        flow = self.flow.get(coin) if (market == "crypto" and self.flow is not None) else None
+        votes = {}
+        for agent, (res_a, v) in (("WHALE", self.whale_agent(flow, pos, rep.direction)),
+                                  ("FLOW", self.flow_agent(flow, snap.df5, rep.direction)),
+                                  ("FUNDING", self.funding_agent(flow, snap.funding, rep.direction))):
+            dec.results.append(res_a)
+            votes[agent] = v
+            if res_a.status == "block" and not operable:
+                dec.raw["votes"] = votes
+                return dec
+        dec.raw["votes"] = votes
+        # --- GATE (anti-squeeze) ---
         sq = s.recommender.squeeze.analyze(snap.df5, rep.direction, snap.funding, pos)
         dec.raw["squeeze"] = sq.points
         if pos is not None:
             dec.raw["crowd"] = pos.short_pct if rep.direction == "SHORT" else pos.long_pct
+        dec.results.append(self.gate_agent(sq, rep.direction))
+        if dec.results[-1].status == "block" and not operable:
+            return dec
+        # --- PRIOR ---
+        t0 = time.perf_counter()
         base_plan = s.planner.plan(capital, symbol, rep.direction, snap.price, snap.atr5, lev_cap=sq.lev_cap)
         prior = s.stats.evaluate(base_plan, snap.df5)
         p_prior = prior.reach[0]
@@ -452,9 +585,7 @@ class Desk:
             return dec
         # --- EDGE ---
         t0 = time.perf_counter()
-        guards = []
-        if sq.risk == "alto":
-            guards.append(sq.label)
+        guards = []  # El squeeze ya lo vigila GATE
         rc = s.risk.check(coin, rep.direction, base_plan.entry, base_plan.stop_loss, base_plan.liquidation, capital,
                           s.journal.today() if s.journal else [])
         guards += rc.blocks
@@ -514,9 +645,13 @@ class Desk:
             value=risk, ms=(time.perf_counter() - t0) * 1000))
         if st_k == "block":
             return dec
+        # --- GUARD (stop guard + escalera de TPs) ---
+        g_res, g_opts = self.guard_agent(plan, snap)
+        dec.results.append(g_res)
         # --- TAKER ---
         t0 = time.perf_counter()
-        ticket = s.executor.build_ticket(plan, symbol, market, exchange or "binance", "DESK", rep.score, post_only=True)
+        ticket = s.executor.build_ticket(plan, symbol, market, exchange or "binance", "DESK", rep.score, post_only=True,
+                                         **g_opts)
         dec.ticket = ticket
         objected = any(r.status == "block" for r in dec.results)
         sent_txt = ("🎲 OPERABLE · NO RECOMENDADA: solo tú decides" if objected
@@ -572,7 +707,10 @@ class Desk:
 
     @staticmethod
     def _operable_score(dec: DeskDecision) -> float:
-        return (dec.probability or 0) + (dec.edge_r or -1) * 100 + (50 if dec.ticket is not None else 0)
+        votes = [v for v in (dec.raw.get("votes") or {}).values() if v is not None]
+        flow = 10 * sum(votes) / len(votes) if votes else 0.0  # Desempate: el flujo de Binance a favor suma
+        gate = -40 if any(r.agent == "GATE" and r.status == "block" for r in dec.results) else 0
+        return (dec.probability or 0) + (dec.edge_r or -1) * 100 + (50 if dec.ticket is not None else 0) + flow + gate
 
 
 # =============================================================================

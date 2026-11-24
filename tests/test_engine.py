@@ -828,12 +828,14 @@ def test_desk_full_chain_approves_and_sizes_with_kelly(fgdb):
     desk = _desk_forced(fgdb)
     dec = desk.run("DEMO/USDT", "demo", 1000, send_mode="paper")
     agents = [r.agent for r in dec.results]
-    assert agents == ["SPOTTER", "PRIOR", "PRICER", "EDGE", "KELLY", "TAKER", "CLOSER"]
+    from engine.fgview.desk import AGENTS
+
+    assert agents == list(AGENTS) and len(AGENTS) == 12
     assert dec.approved and dec.sent and fgdb.positions.all()
     table, _ = fgdb.planner.budget.rule(1000)
     assert dec.risk_pct == pytest.approx(min(table, 0.08 * 0.25 * 100))  # ¼ Kelly, nunca más que la tabla
     assert dec.ticket.post_only and dec.ticket.stop_problem() is None and "APRUEBA" in dec.summary()
-    assert dec.fan and len(dec.fan["paths"]) == 70 and len(dec.trace()) == 7
+    assert dec.fan and len(dec.fan["paths"]) == 70 and len(dec.trace()) == 12
 
 
 def test_desk_blocks_on_negative_edge_and_low_probability(fgdb):
@@ -912,7 +914,7 @@ def test_desk_terminal_payload_and_html(fgdb):
 
     dec = _desk_forced(fgdb).run("DEMO/USDT", "demo", 1000)
     pay = build_payload(fgdb, dec, [("SOL/USDT", 80.0, "")], 1000)
-    assert len(pay["agents"]) == 7 and pay["tape"]["vp"]["v"] and len(pay["feeds"]) == 6
+    assert len(pay["agents"]) == 12 and pay["tape"]["vp"]["v"] and len(pay["feeds"]) == 6
     assert pay["tm"] and pay["ridges"] and pay["verdict"] == "approved"
     assert all(a["task"] and a["value"] for a in pay["agents"])  # Cada agente sabe a qué panel va y qué dato lleva
     assert "marks" in pay["tape"] and pay["tape"]["va"] and pay["hot"]
@@ -976,3 +978,53 @@ def test_desk_ladder_raises_risk_and_respects_min_notional(fgdb):
     dec = desk.run("DEMO/USDT", "demo", 15, ladder_risk=4.0)
     assert dec.plan is not None and dec.risk_pct >= 2.0 and dec.ticket.stop_problem() is None
     assert dec.plan.max_margin_pct == 50.0 and dec.plan.liquidation is not None
+
+
+def test_flow_agents_vote_and_block(fgdb):
+    from engine.fgview.flowfeed import FlowSnapshot
+    from engine.fgview.positioning import Positioning
+
+    desk = fgdb.desk
+    bull = FlowSnapshot("SOL", whale_buy_usd=900_000, whale_sell_usd=100_000, whale_n=12, taker_ratio=1.3,
+                        oi_change_pct=1.5, funding=-0.0002, funding_min=120)
+    r, v = desk.whale_agent(bull, Positioning("SOL", 45, 55, top_long_pct=62), "LONG")
+    assert r.status == "pass" and v > 0.5
+    r, v = desk.whale_agent(bull, Positioning("SOL", 45, 55, top_long_pct=62), "SHORT")
+    assert r.status == "block" and v < -0.45 and "ballenas" in r.headline
+    r, v = desk.flow_agent(bull, pd.DataFrame(), "LONG")
+    assert r.status == "pass" and v > 0.5
+    assert desk.flow_agent(bull, pd.DataFrame(), "SHORT")[0].status == "block"
+    r, v = desk.funding_agent(bull, None, "LONG")  # Funding negativo: el LONG cobra
+    assert r.status == "pass" and v > 0 and "cobras" in r.headline
+    crowded = FlowSnapshot("SOL", funding=0.0008, funding_min=200)
+    assert desk.funding_agent(crowded, None, "LONG")[0].status == "block"
+    soon = FlowSnapshot("SOL", funding=0.0003, funding_min=5)
+    assert desk.funding_agent(soon, None, "LONG")[0].status == "block"
+    r, v = desk.whale_agent(FlowSnapshot("DEMO"), None, "LONG")
+    assert r.status == "info" and v is None
+
+
+def test_gate_blocks_high_squeeze_and_is_hard(fgdb):
+    from engine.fgview.desk import DeskDecision
+    from engine.fgview.squeeze import SqueezeReport
+
+    desk = fgdb.desk
+    hi = desk.gate_agent(SqueezeReport("SHORT", "alto", 6, ["caída fuerte"], 3.1, 10), "SHORT")
+    assert hi.status == "block" and "SHORT SQUEEZE" in hi.headline
+    assert desk.gate_agent(SqueezeReport("LONG", "bajo", 0), "LONG").status == "pass"
+    dec = DeskDecision("SOL/USDT", "SHORT", [hi], ticket=object(), probability=70, edge_r=0.2)
+    assert dec.verdict == "NO OPERAR"
+
+
+def test_hub_payload_and_new_critters(fgdb):
+    from engine.fgview.desk import AGENTS
+    from ui.critters import CRITTERS_JS
+    from ui.desk_hub import hub_html, hub_payload
+
+    dec = _desk_forced(fgdb).run("DEMO/USDT", "demo", 1000)
+    pay = hub_payload(dec)
+    assert [a["key"] for a in pay["agents"]] == list(AGENTS) and pay["verdict"] in ("OPERAR", "ESPERAR", "NO OPERAR")
+    assert "GUARD" in [r.agent for r in dec.results] and dec.ticket.max_hold_min in (30, 45)
+    assert "drawCritter" in hub_html(dec, "<svg/>") and "12 AGENTES" in hub_html(None, "<svg/>")
+    for k in ("WHALE", "FLOW", "FUNDING", "GATE", "GUARD"):
+        assert f"key==='{k}'" in CRITTERS_JS

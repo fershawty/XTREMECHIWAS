@@ -21,7 +21,7 @@ from engine.fgview.desk import AGENT_META, AGENTS
 from ui.critters import CRITTERS_JS
 
 SUBTITLES = {
-    "grafica": "velas · señal · niveles", "desk": "7 agentes · orbitales", "facil": "tu capital → 1 operación",
+    "grafica": "velas · señal · niveles", "desk": "12 agentes · red Binance", "facil": "tu capital → 1 operación",
     "time-machine": "100,000 simulaciones", "swing": "mantener hasta 12 h", "entry-timer": "cuándo entrar",
     "fgview": "plan por capital", "burn-out": "⛔ peligro extremo", "scanner": "top 5 · 5m/15m/1h",
     "news": "impacto · sentimiento", "alertas": "precio · squeeze · liq.", "riesgo": "límites del día",
@@ -71,7 +71,7 @@ def agents_html(decision) -> str:
  background:linear-gradient(180deg,rgba(255,255,255,.03),rgba(255,255,255,0)),#070a10;overflow:hidden">
  <div style="display:flex;justify-content:space-between;padding:6px 9px 0;font-size:8.5px;letter-spacing:.16em;color:#8C95A8">
   <span>◆ LA MESA</span><span style="color:__VC__">__V__</span></div>
- <canvas id="m" style="width:100%;height:116px;display:block"></canvas>
+ <canvas id="m" style="width:100%;height:128px;display:block"></canvas>
  <div style="padding:0 9px 7px;font-size:9px;color:#C9CED8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">__SYM__</div>
 </div>
 <style>body{margin:0;background:transparent;overflow:hidden}</style>
@@ -84,9 +84,9 @@ function f(n){const t=n/1000; x.clearRect(0,0,w,h);
  // Línea de latido que conecta a los agentes
  x.beginPath(); for(let i=0;i<=80;i++){const px=8+(w-16)*i/80, beat=(i/80*7-(t*1.5)%7); const yy=h*.5+(Math.abs(beat)<.15?-18*Math.cos(beat*10):0)+Math.sin(i*.4+t*3)*1.2; i?x.lineTo(px,yy):x.moveTo(px,yy);}
  x.strokeStyle='rgba(242,210,122,.35)'; x.lineWidth=1; x.stroke();
- A.forEach((a,i)=>{const row=i<4?0:1, col=row?i-4:i, n=row?3:4, px=w*(row? (col+1)/(n+1)+.0 : (col+.5)/n), py=row?h*.74:h*.3;
-   drawCritter(x,a.key,px,py,13,a.color,t+i,MO(a.status),Math.sin(t*.7+i)*.6,0);
-   x.font='700 7.5px monospace'; x.textAlign='center'; x.fillStyle=a.status==='idle'?'#566074':a.color; x.fillText(a.key,px,py+25);});
+ const half=Math.ceil(A.length/2); A.forEach((a,i)=>{const row=i<half?0:1, col=row?i-half:i, n=row?A.length-half:half, px=w*(col+.5)/n, py=row?h*.72:h*.27;
+   drawCritter(x,a.key,px,py,9.5,a.color,t+i,MO(a.status),Math.sin(t*.7+i)*.6,0);
+   x.font='700 6.5px monospace'; x.textAlign='center'; x.fillStyle=a.status==='idle'?'#566074':a.color; x.fillText(a.key,px,py+20);});
  requestAnimationFrame(f);}
 requestAnimationFrame(f);
 </script>""".replace("__CRITTERS__", CRITTERS_JS).replace("__A__", json.dumps(agents)).replace("__V__", escape(verdict))

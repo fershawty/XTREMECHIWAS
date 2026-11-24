@@ -249,6 +249,14 @@ jobs:
           - **Windows**: `FGView-V2-Windows.zip` → descomprime y abre `FGView\FGView.exe`
           - **Mac Intel (macOS 12 Monterey o superior)**: `FGView-V2-macOS-Intel.dmg` → arrastra a Aplicaciones; la primera vez Control + clic → Abrir
 
+          **Novedades v4.8 · 12 agentes con datos de Binance**
+          - 🐋 WHALE: sigue las operaciones agresivas grandes (ballenas) y a los top traders de Binance.
+          - 🌊 FLOW: compras vs ventas a mercado de los últimos 30 min + open interest de 1 h.
+          - 💸 FUNDING: bloquea si la multitud ya está demasiado de tu lado o si el cobro de funding está por llegar y te toca pagar.
+          - 🚧 GATE: compuerta anti-squeeze dedicada (si bloquea es ⛔ NO OPERAR).
+          - 🛡️ GUARD: stop fuera del ruido de 5 min, escalera de TPs, breakeven tras TP1, trailing y tiempo máximo.
+          - 🕸️ Nueva vista «La red»: 12 agentes alrededor del núcleo FG con su dato en vivo y pulsos hacia el núcleo; 5 personajes nuevos (ballena, gota, moneda, señal con barrera y tortuga).
+
           **Novedades v4.7 · 🪜 modo escalera para capital pequeño ($10–20)**
           - Empiezas con 10–20 USDT y la mesa con el piloto hacen crecer el saldo solos: 4% de riesgo hasta $50, 3% hasta $100 y 2% hasta $250; luego la tabla normal.
           - Caja fuerte: cada vez que el saldo se duplica, el 20% de la ganancia se guarda y ya no se arriesga. Freno: tras 2 pérdidas seguidas el riesgo baja a la mitad; si cae al 50% de lo puesto, se pausa sola.

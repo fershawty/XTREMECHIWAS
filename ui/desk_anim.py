@@ -44,7 +44,7 @@ SYNAPSE_TEMPLATE = r"""
  <div id="cards" style="position:absolute;left:0;right:0;top:0;height:__STAGE__px;pointer-events:none"></div>
  <div style="position:absolute;left:14px;top:10px;font-size:11px;letter-spacing:.18em;color:#9BA3B4">◆ LA SINAPSIS
   <span style="color:#5D6577">— 7 NEURONAS · UNA DECISIÓN</span></div>
- <div style="position:absolute;right:14px;top:10px;font-size:11px;letter-spacing:.14em;color:#3DDC97">● 7/7 ONLINE</div>
+ <div style="position:absolute;right:14px;top:10px;font-size:11px;letter-spacing:.14em;color:#3DDC97">● __N__/__N__ ONLINE</div>
  <div id="sum" style="position:absolute;left:0;right:0;bottom:0;height:26px;line-height:26px;font-size:11.5px;color:#ECE8DC;
   background:linear-gradient(90deg,rgba(212,175,55,0),rgba(212,175,55,.08),rgba(212,175,55,0));
   text-align:center;opacity:0;transition:opacity .8s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 12px"></div>
@@ -245,7 +245,7 @@ def synapse_html(decision, logo_svg: str, height: int = 600) -> str:
     stage = height - 100
     return (SYNAPSE_TEMPLATE.replace("__CRITTERS__", CRITTERS_JS).replace("__DATA__", data).replace("__LOGO__", json.dumps(logo_svg))
             .replace("__FONTJS__", FONT_JS).replace("__FONTCSS__", FONT).replace("__STAGE__", str(stage))
-            .replace("__H__", str(height)))
+            .replace("__H__", str(height)).replace("__N__", str(len(agents))))
 
 
 def fan_html(fan: dict | None, tm, height: int = 330) -> str:
@@ -402,7 +402,7 @@ def kpi_html(items: list[tuple[str, str, str]], height: int = 74) -> str:
   <div id="clk" style="font-size:19px;font-weight:700;color:#ECE8DC;white-space:nowrap">--:--:--</div>
   <div class="utc" style="font-size:10px;color:#5D6577;letter-spacing:.14em">UTC</div>
   <div class="onl" style="font-size:10px;letter-spacing:.12em;color:#3DDC97;border:1px solid rgba(61,220,151,.35);padding:5px 9px;border-radius:8px;white-space:nowrap">
-   <span style="animation:p 1.4s infinite">●</span> 7 AGENTES ONLINE</div></div>
+   <span style="animation:p 1.4s infinite">●</span> 12 AGENTES ONLINE</div></div>
 </div>
 <style>@keyframes p{{0%,100%{{opacity:1}}50%{{opacity:.25}}}}
 @media (max-width:1180px){{.k2,.k4,.utc{{display:none}}}} @media (max-width:980px){{.k5,.k3{{display:none}}}}
@@ -417,7 +417,7 @@ def _empty(title: str, text: str, height: int) -> str:
 
 
 def pipeline_html(decision, height: int = 96) -> str:
-    """Barra del pipeline: los 7 agentes en fila con pulsos que viajan de etapa en etapa."""
+    """Barra del pipeline: los 12 agentes en fila con pulsos que viajan de etapa en etapa."""
     data = json.dumps(_agents_payload(decision))
     return (r"""
 <div id="w" style="position:relative;height:__H__px;border-radius:14px;overflow:hidden;background:#06080d;

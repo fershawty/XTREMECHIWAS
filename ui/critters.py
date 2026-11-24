@@ -10,6 +10,11 @@ Personajes de los agentes de FG DESK (originales de FG VIEW, dibujados en canvas
     KELLY    robot cubo con visor LED y antena                       (cian)
     TAKER    cangrejo dorado que abre y cierra las pinzas            (dorado)
     CLOSER   fantasma guardián con escudo                            (naranja rojizo)
+    WHALE    ballena con chorro de agua                              (azul)
+    FLOW     gota de agua con olas por dentro                        (turquesa)
+    FUNDING  moneda que gira con borde dentado                       (lima)
+    GATE     señal octagonal con pluma de barrera (sube si pasa)     (rojo)
+    GUARD    tortuga con caparazón hexagonal                         (índigo)
 
 Expresiones: pass = sonríe · block = ceño fruncido y X roja · info = neutral · idle = dormido.
 Los ojos parpadean y miran hacia donde trabajan.
@@ -89,6 +94,37 @@ function drawCritter(x,key,px,py,s,color,t,mood,lx,ly){
     x.fillStyle=_body(x,px,py,s,color); x.beginPath(); x.ellipse(px,py+s*.15,s*.9,s*.72,0,0,6.283); x.fill(); outline();
     [-1,1].forEach(d=>{x.strokeStyle=_shade(color,.6); x.lineWidth=s*.08; x.beginPath(); x.moveTo(px+d*s*.25,py-s*.4); x.lineTo(px+d*s*.3,py-s*.7); x.stroke();});
     _eye(x,px-s*.3,py-s*.78,s*.2,t,mood,lx,ly,5); _eye(x,px+s*.3,py-s*.78,s*.2,t,mood,lx,ly,5.2); _mouth(x,px,py+s*.35,s*.36,mood);
+  } else if(key==='WHALE'){ // Ballena con chorro
+    for(let k=0;k<5;k++){const ph=((t*1.3+k*.2)%1); x.fillStyle=_rgba('#BFE3FF',(1-ph)*.9); x.beginPath(); x.arc(px-s*.15+(k-2)*s*.14*ph,py-s*.9-ph*s*.9,s*(.1+.05*(1-ph)),0,6.283); x.fill();}
+    x.fillStyle=_shade(color,.8); x.beginPath(); x.moveTo(px+s*.8,py+s*.1); x.quadraticCurveTo(px+s*1.25,py-s*.1+Math.sin(t*3)*s*.08,px+s*1.5,py-s*.55); x.quadraticCurveTo(px+s*1.25,py-s*.05,px+s*1.55,py+s*.2); x.quadraticCurveTo(px+s*1.2,py+s*.3,px+s*.8,py+s*.4); x.fill();
+    x.fillStyle=_body(x,px,py,s,color); x.beginPath(); x.ellipse(px-s*.05,py+s*.1,s*1.0,s*.82,0,0,6.283); x.fill(); outline();
+    x.fillStyle=_rgba('#E8F4FF',.8); x.beginPath(); x.ellipse(px-s*.1,py+s*.55,s*.72,s*.32,0,0,Math.PI); x.fill();
+    x.strokeStyle=_rgba('#ffffff',.35); x.lineWidth=s*.04; for(let k=0;k<3;k++){x.beginPath(); x.moveTo(px-s*.55+k*s*.3,py+s*.62); x.lineTo(px-s*.5+k*s*.3,py+s*.82); x.stroke();}
+    _eye(x,px-s*.42,py-s*.12,s*.22,t,mood,lx,ly,7); _eye(x,px+s*.12,py-s*.12,s*.22,t,mood,lx,ly,7.2); _brows(x,px-s*.42,px+s*.12,py-s*.12,s*.22,mood,0); _mouth(x,px-s*.15,py+s*.3,s*.34,mood);
+  } else if(key==='FLOW'){ // Gota con olas
+    x.fillStyle=_body(x,px,py,s,color); x.beginPath(); x.moveTo(px,py-s*1.3); x.bezierCurveTo(px+s*.35,py-s*.75,px+s*1.0,py-s*.2,px+s*.95,py+s*.35); x.arc(px,py+s*.35,s*.95,0,Math.PI); x.bezierCurveTo(px-s*1.0,py-s*.2,px-s*.35,py-s*.75,px,py-s*1.3); x.fill(); outline();
+    x.save(); x.clip(); x.strokeStyle=_rgba('#ffffff',.45); x.lineWidth=s*.07; for(let k=0;k<2;k++){x.beginPath(); for(let i=0;i<=20;i++){const wx=px-s+i*s*.1, wy=py+s*(.62+k*.25)+Math.sin(i*.7+t*4+k)*s*.06; i?x.lineTo(wx,wy):x.moveTo(wx,wy);} x.stroke();} x.restore();
+    x.fillStyle=_rgba('#ffffff',.55); x.beginPath(); x.ellipse(px-s*.45,py-s*.25,s*.12,s*.24,.5,0,6.283); x.fill();
+    _eye(x,px-s*.3,py+s*.02,s*.22,t,mood,lx,ly,8); _eye(x,px+s*.3,py+s*.02,s*.22,t,mood,lx,ly,8.2); _brows(x,px-s*.3,px+s*.3,py+s*.02,s*.22,mood,0); _mouth(x,px,py+s*.42,s*.32,mood);
+  } else if(key==='FUNDING'){ // Moneda que gira
+    const sq=.72+.28*Math.abs(Math.cos(t*1.4)); x.save(); x.translate(px,py); x.scale(sq,1);
+    x.fillStyle=_shade(color,.55); x.beginPath(); for(let k=0;k<36;k++){const a=k/36*6.283, rr=k%2?s*1.02:s*1.1; x.lineTo(rr*Math.cos(a),rr*Math.sin(a));} x.fill();
+    x.fillStyle=_body(x,0,0,s,color); x.beginPath(); x.arc(0,0,s*.92,0,6.283); x.fill(); x.strokeStyle=_rgba('#ffffff',.45); x.lineWidth=s*.06; x.beginPath(); x.arc(0,0,s*.74,0,6.283); x.stroke();
+    x.fillStyle=_shade(color,.45); x.font='800 '+(s*.42).toFixed(0)+'px monospace'; x.textAlign='center'; x.textBaseline='middle'; x.fillText('%',0,-s*.48);
+    _eye(x,-s*.3,-s*.02,s*.2,t,mood,lx,ly,9); _eye(x,s*.3,-s*.02,s*.2,t,mood,lx,ly,9.2); _brows(x,-s*.3,s*.3,-s*.02,s*.2,mood,0); _mouth(x,0,s*.4,s*.32,mood); x.restore();
+  } else if(key==='GATE'){ // Señal octagonal con pluma de barrera
+    const up=mood==='pass'?-1.05:mood==='block'?0:-.35+Math.sin(t*1.5)*.1; x.save(); x.translate(px+s*.95,py-s*.95); x.rotate(Math.PI+up);
+    x.fillStyle='#F4F4F6'; x.fillRect(0,-s*.09,s*1.6,s*.18); x.fillStyle='#FF4D6D'; for(let k=0;k<4;k++) x.fillRect(k*s*.4+s*.1,-s*.09,s*.18,s*.18); x.restore();
+    x.fillStyle='#E6E9EF'; x.beginPath(); for(let k=0;k<8;k++){const a=Math.PI/8+k*Math.PI/4; x.lineTo(px+s*1.05*Math.cos(a),py+s*1.05*Math.sin(a));} x.closePath(); x.fill();
+    x.fillStyle=_body(x,px,py,s,color); x.beginPath(); for(let k=0;k<8;k++){const a=Math.PI/8+k*Math.PI/4; x.lineTo(px+s*.92*Math.cos(a),py+s*.92*Math.sin(a));} x.closePath(); x.fill();
+    _eye(x,px-s*.3,py-s*.15,s*.22,t,mood,lx,ly,10); _eye(x,px+s*.3,py-s*.15,s*.22,t,mood,lx,ly,10.2); _brows(x,px-s*.3,px+s*.3,py-s*.15,s*.22,mood,.25); _mouth(x,px,py+s*.35,s*.34,mood);
+  } else if(key==='GUARD'){ // Tortuga con caparazón
+    [-1,1].forEach(d=>{x.fillStyle=_shade(color,.7); x.beginPath(); x.ellipse(px+d*s*.7,py+s*.82+Math.sin(t*3+d)*s*.04,s*.22,s*.14,0,0,6.283); x.fill();});
+    x.fillStyle=_body(x,px,py,s,color); x.beginPath(); x.ellipse(px,py+s*.05,s*1.08,s*.95,0,Math.PI,0); x.lineTo(px+s*1.08,py+s*.5); x.quadraticCurveTo(px,py+s*.75,px-s*1.08,py+s*.5); x.closePath(); x.fill(); outline();
+    x.strokeStyle=_rgba('#1b1f3a',.45); x.lineWidth=s*.06; const hx=(cx,cy,r)=>{x.beginPath(); for(let k=0;k<6;k++){const a=k*Math.PI/3; x.lineTo(cx+r*Math.cos(a),cy+r*Math.sin(a));} x.closePath(); x.stroke();};
+    hx(px,py-s*.45,s*.28); hx(px-s*.5,py-s*.15,s*.24); hx(px+s*.5,py-s*.15,s*.24);
+    const fx=px, fy=py+s*.38; x.fillStyle=_shade(color,1.15); x.beginPath(); x.ellipse(fx,fy,s*.62,s*.42,0,0,6.283); x.fill();
+    _eye(x,fx-s*.24,fy-s*.06,s*.17,t,mood,lx,ly,11); _eye(x,fx+s*.24,fy-s*.06,s*.17,t,mood,lx,ly,11.2); _brows(x,fx-s*.24,fx+s*.24,fy-s*.06,s*.17,mood,0); _mouth(x,fx,fy+s*.22,s*.26,mood);
   } else { // CLOSER: fantasma guardián con escudo
     x.fillStyle=_body(x,px,py,s,color); x.beginPath(); x.moveTo(px-s*.9,py+s*.9); x.lineTo(px-s*.9,py-s*.1); x.arc(px,py-s*.1,s*.9,Math.PI,0); x.lineTo(px+s*.9,py+s*.9);
     for(let k=0;k<4;k++){const wx=px+s*.9-(k+1)*s*.45; x.quadraticCurveTo(wx+s*.22,py+s*(k%2?.7:1.15)+Math.sin(t*5+k)*s*.06,wx,py+s*.9);} x.fill(); outline();

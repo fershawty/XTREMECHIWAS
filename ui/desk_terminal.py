@@ -6,7 +6,7 @@ FG DESK · TERMINAL: la mesa completa en una sola pantalla animada (canvas, 60 f
 Paneles (todos con datos reales de la mesa, del mercado y de tu bitácora de papel):
   barra superior · estado de la mesa · LIVE WIRE
   MESA PNL · THE TAPE (velas, bandas σ del VWAP, perfil de volumen, escalera del libro)
-  ORBITALES (esfera armilar 3D con los 7 agentes orbitando el núcleo FG; el «ticket» salta
+  ORBITALES (esfera armilar 3D con los 12 agentes orbitando el núcleo FG; el «ticket» salta
              de agente en agente; radar de rastreo; fuentes de datos; Mission Control;
              cuenta regresiva al cierre de vela; telemetría; registro de vuelo)
   PIPELINE · LA TRAZA · EL PRICER (tablero de Galton con la distribución real del Time
@@ -21,7 +21,8 @@ from datetime import datetime, timezone
 from engine.fgview.desk import AGENT_META, AGENTS
 from ui.critters import CRITTERS_JS
 
-CODES = {"SPOTTER": "SP", "PRIOR": "PR", "PRICER": "PX", "EDGE": "ED", "KELLY": "KE", "TAKER": "TK", "CLOSER": "CL"}
+CODES = {"SPOTTER": "SP", "WHALE": "WH", "FLOW": "FL", "FUNDING": "FU", "GATE": "GT", "PRIOR": "PR", "PRICER": "PX",
+         "EDGE": "ED", "KELLY": "KE", "GUARD": "GD", "TAKER": "TK", "CLOSER": "CL"}
 
 
 def build_payload(svc, dec, ranked=None, capital: float = 1000.0) -> dict:
@@ -73,6 +74,12 @@ def build_payload(svc, dec, ranked=None, capital: float = 1000.0) -> dict:
             "TAKER": (f"{plan.direction} {plan.entry:,.4g} post-only" if plan else "esperando orden", "COLOCANDO LA ORDEN"),
             "CLOSER": (f"{len(svc.positions.all())} abiertas · trailing", "ARCHIVANDO EN LA BITÁCORA"),
         }
+        for k, task in (("WHALE", "SIGUIENDO BALLENAS"), ("FLOW", "MIDIENDO EL FLUJO"), ("FUNDING", "REVISANDO EL FUNDING"),
+                        ("GATE", "VIGILANDO SQUEEZES"), ("GUARD", "COLOCANDO EL STOP")):
+            r = done.get(k)
+            val = "sin datos" if r is None else (f"{'a favor' if (r.value or 0) > 0.15 else 'en contra' if (r.value or 0) < -0.15 else 'neutral'} {r.value:+.2f}"
+                                                 if k in ("WHALE", "FLOW", "FUNDING") and r.value is not None else r.headline.split(" · ")[0][:34])
+            steps[k] = (val, task)
     for a in agents:
         a["value"], a["task"] = steps.get(a["key"], ("en espera", "PATRULLANDO"))
     return {
@@ -81,7 +88,7 @@ def build_payload(svc, dec, ranked=None, capital: float = 1000.0) -> dict:
         "symbol": dec.symbol if dec else "—", "direction": (dec.direction or "") if dec else "",
         "verdict": ("approved" if dec and dec.approved else ("operable" if dec.verdict == "ESPERAR" else "blocked") if dec and dec.operable
                     else "blocked" if dec and dec.blocked_by else "idle"),
-        "summary": dec.summary() if dec else "Pulsa «Correr la mesa»: los 7 agentes analizarán el mercado.",
+        "summary": dec.summary() if dec else "Pulsa «Correr la mesa»: los 12 agentes analizarán el mercado.",
         "agents": agents, "trace": dec.trace() if dec else [],
         "prob": round(dec.probability, 1) if dec and dec.probability is not None else None,
         "edge_r": round(dec.edge_r, 3) if dec and dec.edge_r is not None else None,
@@ -155,18 +162,18 @@ canvas{position:absolute;inset:0;width:100%;height:100%}
 </style></head><body>
 <div class="T" id="T"><canvas id="cFly" style="position:absolute;inset:0;z-index:30;pointer-events:none"></canvas>
  <div class="top">
-  <div class="brand"><span id="logo"></span><div><div class="bn">FG DESK</div><div class="bs">7 AGENTES · UN LIBRO · FUTUROS PERPETUOS</div></div>
+  <div class="brand"><span id="logo"></span><div><div class="bn">FG DESK</div><div class="bs">12 AGENTES · BINANCE · FUTUROS PERPETUOS</div></div>
    <div class="navx" style="margin-left:22px;font-size:10px;letter-spacing:.18em;color:var(--m)">ORBITALES · TAPE · LIBRO · PRICER</div></div>
   <div class="st"><div><b id="tBal">—</b><i>SALDO</i></div><div><b id="tRisk" style="color:#5AC8FA">—</b><i>RIESGO ¼ KELLY</i></div>
    <div><b id="tSims" style="color:#B388FF">—</b><i>SIMULACIONES</i></div><div class="clk" id="clk">--:--:--</div><i style="font-size:9px;color:var(--f)">UTC</i>
    <div class="on"><span class="pulse">●</span> MESA ONLINE</div></div>
  </div>
- <div class="tick"><div class="lab" style="color:#3DDC97;border-right:1px solid var(--l)">● 7 AGENTES LIVE</div><div style="overflow:hidden;flex:1"><div class="mq" id="status" style="animation-duration:44s"></div></div></div>
+ <div class="tick"><div class="lab" style="color:#3DDC97;border-right:1px solid var(--l)">● 12 AGENTES LIVE</div><div style="overflow:hidden;flex:1"><div class="mq" id="status" style="animation-duration:44s"></div></div></div>
  <div class="tick"><div class="lab" style="background:linear-gradient(90deg,#F7DC8B,#D4AF37);color:#05070b">LIVE WIRE</div><div style="overflow:hidden;flex:1"><div class="mq" id="wire"></div></div></div>
  <div class="row" style="grid-template-columns:37% 1fr">
   <div class="pn" id="pnlP"><div class="hd">◆ <b>MESA PNL</b> <span>— UN LIBRO · HISTORIAL DE PAPEL</span></div><div class="hr" id="pnlR"></div>
    <div style="position:absolute;left:11px;right:11px;top:26px;z-index:2">
-    <div style="display:flex;justify-content:space-between;align-items:flex-end"><div><div style="font-size:10px;color:var(--m)">FG DESK <span style="color:var(--f)">· SEIS AGENTES + CLOSER</span></div>
+    <div style="display:flex;justify-content:space-between;align-items:flex-end"><div><div style="font-size:10px;color:var(--m)">FG DESK <span style="color:var(--f)">· 12 AGENTES · BINANCE</span></div>
      <div class="big" id="pBal">$0</div></div><div style="text-align:right"><div id="pDelta" class="chip" style="background:rgba(61,220,151,.12);color:#3DDC97;margin:0">—</div>
      <div style="font-size:9px;color:var(--f);margin-top:4px" id="pSub"></div></div></div>
     <div class="kgrid" style="margin-top:6px"><div class="kc"><i>OPERACIONES</i><b id="pT">0</b></div><div class="kc"><i>WIN RATE</i><b id="pW" style="color:#3DDC97">0%</b></div>
@@ -176,7 +183,7 @@ canvas{position:absolute;inset:0;width:100%;height:100%}
   <div class="pn" id="tapeP"><div class="hd">◆ <b>THE TAPE</b> <span>— 5M · VWAP σ-BANDAS · PERFIL DE VOLUMEN · LIBRO EN VIVO</span></div>
    <div class="hr" id="tapeR"></div><canvas id="cTape"></canvas></div>
  </div>
- <div class="pn hot" id="orbP"><div class="hd">◆ <b>ORBITALES</b> <span>— 7 AGENTES · 7 ÓRBITAS · EL TICKET SALTA ENTRE ELLOS · FG EN EL NÚCLEO</span></div>
+ <div class="pn hot" id="orbP"><div class="hd">◆ <b>ORBITALES</b> <span>— 12 AGENTES · 12 ÓRBITAS · EL TICKET SALTA ENTRE ELLOS · FG EN EL NÚCLEO</span></div>
   <div class="hr" id="orbR"></div><canvas id="cOrb"></canvas>
   <div style="position:absolute;left:10px;top:30px;width:20%;z-index:2"><div style="font-size:10px;color:var(--f)">PRECIO</div><div id="oPx" style="font-size:22px;font-weight:800">—</div>
    <div id="oSub" style="font-size:9px;color:#FF4D6D"></div></div>
@@ -218,7 +225,7 @@ $('logo').innerHTML=LOGO;
 // ---------------- Textos y paneles HTML ----------------
 const P=D.pnl, act=D.agents.filter(a=>a.status!=='idle'), holder=act.length?act[act.length-1].key:'SPOTTER';
 $('tBal').textContent=usd(P.balance); $('tRisk').textContent=D.risk_pct!=null?D.risk_pct.toFixed(2)+'%':'—'; $('tSims').textContent=D.tm?fm(D.tm.sims,0):'—';
-$('status').innerHTML=['HOLDER <b style="color:'+COL[holder]+'">'+holder+'</b>','TRASPASOS '+act.length+'/7',
+$('status').innerHTML=['HOLDER <b style="color:'+COL[holder]+'">'+holder+'</b>','TRASPASOS '+act.length+'/'+D.agents.length,
  'MODELO P(TP1) '+(D.prob!=null?D.prob+'%':'—')+' VS BASE '+(D.tm&&D.tm.prior!=null?D.tm.prior+'%':'—'),'VENTAJA '+(D.edge_r!=null?(D.edge_r>=0?'+':'')+D.edge_r.toFixed(2)+'R':'—'),
  'POSICIONES ABIERTAS '+D.open,'PILOTO '+(D.pilot.on?'ON · '+(D.pilot.mode==='live'?'REAL':'PAPEL'):'OFF'),'APROBACIÓN HUMANA EN REAL','VEREDICTO '+(D.verdict==='approved'?'<b style="color:#3DDC97">✅ OPERAR</b>':D.verdict==='operable'?'<b style="color:#F5A623">⏸️ ESPERAR</b>':D.verdict==='blocked'?'<b style="color:#FF4D6D">NO OPERAR</b>':'EN ESPERA')]
  .map(x=>'<span style="margin:0 18px;color:#C9CED8">'+x+'</span>').join('<span style="color:#3a4150">◆</span>');
@@ -255,14 +262,14 @@ $('gauges').innerHTML=D.agents.map(a=>{const p=a.status==='idle'?6:a.status==='b
  return '<div style="text-align:center"><div class="gauge" style="background:conic-gradient('+c+' '+p+'%,#161b27 0)"><span style="color:'+a.color+'">'+a.code+'</span></div><div style="font-size:7.5px;color:#566074;margin-top:2px">'+(a.ms!=null?a.ms+'ms':'—')+'</div></div>';}).join('');
 $('flog').innerHTML=(act.length?act:D.agents.slice(0,4)).slice(-5).map(a=>'<div class="r"><span style="color:'+a.color+'">› '+a.key+'</span><span style="color:#8C95A8">'+(a.at||'--:--')+'</span><b style="color:'+stCol(a)+'">'+(a.status==='pass'?'OK':a.status==='block'?'STOP':a.status==='info'?'INFO':'…')+'</b></div>').join('');
 // Traza
-const steps=act.length; $('tc').innerHTML=[['PASOS',steps+'/7'],['MS',fm(act.reduce((s,a)=>s+(a.ms||0),0),0)],['BLOQ.',act.filter(a=>a.status==='block').length],['SIMS',D.tm?fm(D.tm.sims/1000,0)+'K':'0']]
+const steps=act.length; $('tc').innerHTML=[['PASOS',steps+'/'+D.agents.length],['MS',fm(act.reduce((s,a)=>s+(a.ms||0),0),0)],['BLOQ.',act.filter(a=>a.status==='block').length],['SIMS',D.tm?fm(D.tm.sims/1000,0)+'K':'0']]
  .map(k=>'<div class="kc"><i>'+k[0]+'</i><b>'+k[1]+'</b></div>').join('');
 $('trace').innerHTML=(act.length?act:[{key:'FG DESK',color:'#566074',headline:'Esperando la primera decisión de la mesa…',at:'',status:'idle'}]).map((a,i)=>
  '<div class="ti" style="--c:'+(a.color||'#566074')+';animation-delay:'+(i*.62)+'s"><div style="display:flex;justify-content:space-between;font-size:9px"><span class="chip" style="margin:0;background:'+rgba(a.color||'#566074',.16)+';color:'+(a.color||'#888')+'">'+a.key+'</span>'+
  '<b style="color:'+stCol(a)+'">'+(a.status==='pass'?'✓ '+(a.ms||0)+'ms':a.status==='block'?'✕ BLOQUEA':a.status==='info'?'● INFO':'…')+'</b></div>'+
  '<div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:baseline"><div style="font-size:9.5px;color:#C9CED8;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(a.headline)+'</div>'+
  '<div style="text-align:right;white-space:nowrap"><b style="font-size:10.5px;color:'+(a.color||'#888')+'">'+esc(a.value||'')+'</b><div style="font-size:8px;color:#566074">'+(i<act.length-1?a.key+'→'+act[i+1].key:a.status==='block'?'DETENIDO':'FIN')+'</div></div></div></div>').join('');
-$('foot').innerHTML=['FG VIEW V2 · FG DESK','UN LIBRO · 7 AGENTES · SIN HUMANO EN EL BUCLE EN PAPEL','ÚLTIMA OPERACIÓN '+(last==null?'—':usd(last,true)),'NETO PAPEL '+usd(P.net,true),
+$('foot').innerHTML=['FG VIEW V2 · FG DESK','UN LIBRO · 12 AGENTES · SIN HUMANO EN EL BUCLE EN PAPEL','ÚLTIMA OPERACIÓN '+(last==null?'—':usd(last,true)),'NETO PAPEL '+usd(P.net,true),
  'WIN RATE '+fm(P.win_rate,1)+'%','PROFIT FACTOR '+(P.pf==null?'∞':fm(P.pf)),D.summary].map(x=>'<span style="margin:0 22px;color:#C9CED8">'+esc(x)+'</span>').join('<span style="color:#3a4150">◆</span>');
 // ---------------- Canvas ----------------
 const cv={}; function setup(id){const c=$(id),x=c.getContext('2d'); cv[id]={c,x,w:0,h:0}; size(id);}
@@ -328,8 +335,8 @@ function drawTape(t){const {x,w,h}=cv.cTape; x.clearRect(0,0,w,h);
 // --- ORBITALES: esfera armilar 3D ---
 let ORB=null; const RINGS=[]; const HOME=[]; const MAP={};
 function initOrb(){const {w,h}=cv.cOrb; const cx=w*.505, cy=h*.6, R=Math.min(w*.2,h*.36); ORB={cx,cy,R};
-  RINGS.length=0; const cols=['#3DDC97','#F5A623','#B388FF','#FF5C8A','#5AC8FA','#F2D27A','#FF8A3D','#9CFFB5','#FF5C8A','#5AC8FA','#B388FF'];
-  for(let i=0;i<11;i++) RINGS.push({a:(i*0.61)%Math.PI,b:(i*1.37)%(2*Math.PI),s:(i%2?1:-1)*(0.12+i*0.017),r:R*(0.82+((i*7)%5)*0.06),c:cols[i]});
+  RINGS.length=0; const cols=['#3DDC97','#3B82F6','#2DD4BF','#A3E635','#FF4D6D','#F5A623','#B388FF','#FF5C8A','#5AC8FA','#A5B4FC','#F2D27A','#FF8A3D','#9CFFB5','#B8E1FF'];
+  for(let i=0;i<14;i++) RINGS.push({a:(i*0.61)%Math.PI,b:(i*1.37)%(2*Math.PI),s:(i%2?1:-1)*(0.12+i*0.017),r:R*(0.82+((i*7)%5)*0.06),c:cols[i]});
   ORB.nodes=[]; for(let i=0;i<64;i++){const y=1-2*(i+.5)/64, r=Math.sqrt(1-y*y), th=i*2.399963, rr=R*(1.28+((i*37)%10)/28); ORB.nodes.push([Math.cos(th)*r*rr,y*rr,Math.sin(th)*r*rr]);}
   ORB.edges=[]; ORB.nodes.forEach((a,i)=>{const d=ORB.nodes.map((b,j)=>[j,(a[0]-b[0])**2+(a[1]-b[1])**2+(a[2]-b[2])**2]).filter(q=>q[0]!==i).sort((p,q)=>p[1]-q[1]); ORB.edges.push([i,d[0][0]],[i,d[1][0]]);});
   ORB.bolts=[]; ORB.pulses=ORB.edges.filter((_,k)=>k%5===0).map((e,k)=>({e,t:(k*.137)%1}));
@@ -397,7 +404,7 @@ function drawOrb(t){const {x,w,h}=cv.cOrb; x.clearRect(0,0,w,h); const {cx,cy,R}
     x.strokeStyle='rgba(255,255,255,'+(b.l*.8)+')'; x.lineWidth=.6; seg(A,B,10,0); b.l-=.09;});
   ags.filter(o=>o.p[2]<=0).forEach(draw);
   // El ticket salta entre agentes
-  const seq=D.agents.map((a,i)=>i).filter(i=>D.agents[i].status!=='idle'); const S=seq.length?seq:[0,1,2,3,4,5,6];
+  const seq=D.agents.map((a,i)=>i).filter(i=>D.agents[i].status!=='idle'); const S=seq.length?seq:D.agents.map((_,i)=>i);
   if(S.length===1){const o=ags[S[0]]; if(o.scr){const [qx,qy]=o.scr; const lab='TICKET · DETENIDO EN '+o.a.key; x.font='700 8.5px monospace'; const lw=x.measureText(lab).width+14;
     x.fillStyle='rgba(5,7,11,.85)'; x.strokeStyle=rgba(BAD,.8); x.beginPath(); x.roundRect(qx-lw/2,qy-36,lw,16,8); x.fill(); x.stroke(); x.fillStyle=BAD; x.textAlign='center'; x.fillText(lab,qx,qy-25);}}
   const hop=1.5, k=Math.floor(t/hop)%S.length, nx=S[(k+1)%S.length], u=Math.min(1,(t%hop)/.9);
@@ -419,7 +426,7 @@ function drawOrb(t){const {x,w,h}=cv.cOrb; x.clearRect(0,0,w,h); const {cx,cy,R}
   x.font='800 9px monospace'; x.fillStyle=GOLD; x.textAlign='left'; x.fillText('BINANCE FUTURES',px0+9,py0+13); x.font='8.5px monospace'; x.fillStyle='#C9CED8';
   x.fillText((D.direction||'—')+' '+(D.plan?D.plan.coin+'/USDT':D.symbol),px0+9,py0+25); x.textAlign='right'; x.fillStyle=D.edge_r!=null&&D.edge_r<0?BAD:OK; x.fillText(D.edge_r!=null?(D.edge_r>=0?'+':'')+D.edge_r.toFixed(2)+'R':'',px0+pw-8,py0+25);}
 // --- PIPELINE ---
-function drawPipe(t){const {x,w,h}=cv.cPipe; x.clearRect(0,0,w,h); const n=D.agents.length, y=h*.56, x0=60, x1=w-60, dx=(x1-x0)/(n-1);
+function drawPipe(t){const {x,w,h}=cv.cPipe; x.clearRect(0,0,w,h); const n=D.agents.length, y=h*.56, x0=46, x1=w-92, dx=(x1-x0)/(n-1);
   x.strokeStyle='rgba(148,163,184,.14)'; x.lineWidth=2; x.beginPath(); x.moveTo(x0,y); x.lineTo(x1,y); x.stroke();
   const reached=act.length, prog=Math.min(Math.max(0,reached-1),t/.62);
   if(reached){const g=x.createLinearGradient(x0,0,x0+dx*prog+1,0); g.addColorStop(0,'rgba(242,210,122,.15)'); g.addColorStop(1,GOLD); x.strokeStyle=g; x.lineWidth=2.6; x.shadowColor=GOLD; x.shadowBlur=12; x.beginPath(); x.moveTo(x0,y); x.lineTo(x0+dx*prog,y); x.stroke(); x.shadowBlur=0;}
@@ -491,7 +498,7 @@ function drawAct(t){const o=cv.cAct; if(!o) return; const {x,w,h}=o; x.clearRect
   x.strokeStyle='#5AC8FA'; x.lineWidth=1.4; x.stroke(); x.lineTo(w-4,h-4); x.lineTo(4,h-4); x.closePath(); x.fillStyle='rgba(90,200,250,.12)'; x.fill();
   x.font='7px monospace'; x.fillStyle='#566074'; x.textAlign='right'; x.fillText('ACTIVIDAD · MS',w-4,9);}
 // --- Agentes que viajan a su panel ---
-const STATION={SPOTTER:['tapeP',.33,.62],PRIOR:['ridP',.42,.5],PRICER:['galP',.55,.32],EDGE:['tapeP',.88,.52],KELLY:['pnlP',.72,.58],TAKER:['tapeP',.88,.32],CLOSER:['traceP',.62,.66]};
+const STATION={WHALE:['tapeP',.88,.6],FLOW:['tapeP',.6,.6],FUNDING:['pnlP',.5,.5],GATE:['ridP',.6,.5],GUARD:['tapeP',.7,.7],SPOTTER:['tapeP',.33,.62],PRIOR:['ridP',.42,.5],PRICER:['galP',.55,.32],EDGE:['tapeP',.88,.52],KELLY:['pnlP',.72,.58],TAKER:['tapeP',.88,.32],CLOSER:['traceP',.62,.66]};
 function along(pts,u){if(!pts||!pts.length) return null; const f=Math.max(0,Math.min(1,u))*(pts.length-1), k=Math.floor(f), q=pts[Math.min(pts.length-1,k+1)], p=pts[k], e=f-k;
   return [p[0]+(q[0]-p[0])*e,p[1]+(q[1]-p[1])*e];}
 function workPos(a,u,t,pr){const k=a.key, P=(fx,fy)=>[pr.x+pr.w*fx,pr.y+pr.h*fy];
@@ -501,6 +508,11 @@ function workPos(a,u,t,pr){const k=a.key, P=(fx,fy)=>[pr.x+pr.w*fx,pr.y+pr.h*fy]
   if(k==='PRIOR'){const q=along(MAP.ridge,.1+u*.85); return q?[pr.x+q[0],pr.y+q[1]-24]:P(.2+u*.5,.5);}
   if(k==='PRICER'){const G=MAP.gal; return G?[pr.x+G.cx+Math.sin(t*2.2)*G.w*.18,pr.y+G.top-4]:P(.5,.3);}
   if(k==='KELLY'){const q=along(MAP.pnl,.1+u*.85); return q?[pr.x+q[0],pr.y+q[1]-26]:P(.15+u*.7,.55);}
+  if(k==='WHALE'){const L=MAP.ladder; if(!L) return P(.85,.6); const row=(Math.cos(u*Math.PI*2)+1)/2*(L.n-1); return [pr.x+L.x0+L.w*.15,pr.y+L.top+row*L.rh+L.rh/2];}
+  if(k==='FLOW'){const q=along(MAP.tape,.55+u*.4); return q?[pr.x+q[0],pr.y+q[1]+34]:P(.5+u*.3,.7);}
+  if(k==='FUNDING'){const q=along(MAP.pnl,.85-u*.7); return q?[pr.x+q[0],pr.y+q[1]-26]:P(.8-u*.6,.5);}
+  if(k==='GATE'){const q=along(MAP.ridge,.9-u*.8); return q?[pr.x+q[0],pr.y+q[1]-24]:P(.8-u*.6,.45);}
+  if(k==='GUARD'){return P(.12+u*.6,.86+Math.sin(u*9)*.02);}
   if(k==='CLOSER'){const n=Math.max(1,act.length); return [pr.x+pr.w*.06,pr.y+95+u*Math.min(pr.h-130,n*46)];}
   return P(.5,.5);}
 function rel(id){const T0=$('T').getBoundingClientRect(), r=$(id).getBoundingClientRect(); return {x:r.left-T0.left,y:r.top-T0.top,w:r.width,h:r.height};}

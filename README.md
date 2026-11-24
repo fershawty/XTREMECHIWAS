@@ -35,7 +35,7 @@ Variables nuevas en `.env`: `LIVE_TRADING_ENABLED` (modo real, por defecto `fals
 
 ## 🧠 v4.2 · FG DESK (FG VIEW V2)
 
-Mesa de 7 agentes (`engine/fgview/desk.py`) para operaciones cortas en futuros, con animaciones en `ui/desk_anim.py`:
+Mesa de 12 agentes (incluye ballenas, flujo taker + OI, funding, compuerta anti-squeeze y stop guard con datos de Binance) (`engine/fgview/desk.py`) para operaciones cortas en futuros, con animaciones en `ui/desk_anim.py`:
 
 | Agente | Qué hace |
 |---|---|

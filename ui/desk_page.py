@@ -1,7 +1,7 @@
 """
 ui/desk_page.py
 ===============
-Página 🧠 FG DESK: la mesa de 7 agentes para operaciones cortas en futuros, con sus
+Página 🧠 FG DESK: la mesa de 12 agentes para operaciones cortas en futuros, con sus
 animaciones (sinapsis, abanico de futuros, traza, rotación de señales y calibración) y el
 🤖 piloto automático (papel primero; el modo real solo se desbloquea con resultados).
 """
@@ -15,6 +15,7 @@ from engine.config import SETTINGS
 from engine.fgview.executor import live_enabled
 from engine.position_simulator import fmt_usd
 from ui import desk_anim as anim
+from ui.desk_hub import hub_html
 from ui.desk_terminal import build_payload, terminal_html
 from ui.components import _logo_svg
 from ui.mode import beginner, guide
@@ -25,10 +26,11 @@ def _capital() -> float:
 
 
 def render_desk(svc, req) -> None:
-    guide("Siete agentes analizan cada operación en cadena, como una mesa de traders profesionales. Si UNO dice que no, "
+    guide("Doce agentes analizan cada operación en cadena, como una mesa de traders profesionales: además del mercado, "
+          "siguen a las ballenas de Binance, el flujo de compras/ventas, el open interest y el funding. Si UNO dice que no, "
           "no se opera. La animación te muestra en vivo qué decidió cada uno.",
           ["Elige la cripto (o «Escanear todas») y pulsa «▶ Correr la mesa».",
-           "Mira la sinapsis: verde = aprueba, rojo = bloquea, dorado en el centro = orden aprobada.",
+           "Mira la red: verde = aprueba, rojo = bloquea, gris = sin datos; el agente que decidió se ilumina.",
            "Si la mesa aprueba, envía la orden al Order Executor o deja que el 🤖 piloto la abra en papel."],
           "La calibración compara lo que la mesa predijo con lo que pasó de verdad: así sabes cuánto confiar en sus números.")
     market = "demo" if req.market == "demo" else "crypto"
@@ -57,8 +59,8 @@ def render_desk(svc, req) -> None:
                    f"{'la tabla normal' if lrisk is None else f'{lrisk:g}% de riesgo'} por operación.")
     if go:
         try:
-            with st.spinner("Los agentes están analizando: Spotter → Prior → Pricer (100,000 caminos + calibración) → "
-                            "Edge → Kelly → Taker…"):
+            with st.spinner("Los agentes están analizando: Spotter → Ballenas → Flujo → Funding → Compuerta → Prior → "
+                            "Pricer (100,000 caminos + calibración) → Edge → Kelly → Guard → Taker…"):
                 if target.startswith("🔎"):
                     dec, ranked = svc.desk.scan(coins, market, capital, req.exchange, ladder_risk=lrisk)
                     st.session_state["dk_ranked"] = ranked
@@ -72,11 +74,11 @@ def render_desk(svc, req) -> None:
     dec = st.session_state.get("dk_last")
     if dec is not None and beginner():
         st.info(dec.summary())
+    st.markdown("### 🕸️ La red · 12 agentes → un núcleo FG")
+    components.html(hub_html(dec, _logo_svg()), height=604)
     # Terminal completa: tickers, MESA PNL, THE TAPE, ORBITALES, pipeline, traza, Pricer (Galton) y cordilleras
     components.html(terminal_html(build_payload(svc, dec, st.session_state.get("dk_ranked"), capital), _logo_svg()),
                     height=1470)
-    st.markdown("### 🧠 La sinapsis · red neuronal de la decisión")
-    components.html(anim.synapse_html(dec, _logo_svg()), height=608)
     a, b = st.columns([1.55, 1])
     with a:
         components.html(anim.fan_html(dec.fan if dec else None, dec.tm if dec else None), height=338)
@@ -155,7 +157,7 @@ def _autopilot(svc, req, market: str, capital: float) -> None:
     st.markdown("### 🤖 Piloto automático de la mesa")
     pilot = svc.autopilot
     stt = pilot.state()
-    guide("El piloto corre la mesa cada minuto y, si los 7 agentes aprueban, abre la operación SOLO. Empieza en PAPEL. "
+    guide("El piloto corre la mesa cada minuto y, si los 12 agentes aprueban, abre la operación SOLO. Empieza en PAPEL. "
           "El modo real se desbloquea cuando el papel demuestra resultados (50 operaciones, profit factor ≥ 1.2, "
           "drawdown ≤ 10%) y además tú lo activas.")
     unlocked, why = pilot.live_unlocked()
