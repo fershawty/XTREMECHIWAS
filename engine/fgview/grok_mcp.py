@@ -42,12 +42,31 @@ TOOL_AGENTS = {  # Qué agentes "se mueven" en la animación cuando Grok usa cad
     "fg_posiciones": ["CLOSER"],
     "fg_resultados": ["KELLY", "CLOSER"],
     "grok_veredicto": ["TAKER"],
+    "fg_tarjeta": ["SPOTTER", "WHALE", "FLOW", "FUNDING", "GATE", "PRIOR", "PRICER", "EDGE", "KELLY", "GUARD", "TAKER"],
+    "fg_coach": ["CLOSER"],
+    "fg_reglas": ["KELLY"],
+    "fg_resumen": ["CLOSER"],
 }
+
+
+def copilot_prompt() -> str:
+    """El prompt del copiloto adaptado (docs/GROK_COPILOT_PROMPT.md), también dentro del ejecutable."""
+    import sys
+    from pathlib import Path
+
+    for base in (Path(getattr(sys, "_MEIPASS", "")), Path(__file__).resolve().parents[2]):
+        p = base / "docs" / "GROK_COPILOT_PROMPT.md"
+        if p.is_file():
+            return p.read_text(encoding="utf-8")
+    return ""
 INSTRUCTIONS = """FG VIEW es una terminal de análisis de futuros perpetuos USDT-M de Binance para operaciones cortas \
 (15-30 min). Tiene una mesa de 12 agentes de código (Spotter, Whale, Flow, Funding, Gate, Prior, Pricer con 100,000 \
 simulaciones, Edge, Kelly, Guard, Taker, Closer) que dan un veredicto OPERAR / ESPERAR / NO OPERAR con un plan \
 (entrada, stop loss, take profits, apalancamiento, riesgo).
 
+Sigue las 10 REGLAS DE VERDAD del prompt del copiloto (prompt «copiloto_fg»): nunca prometas ganancias, cada número \
+con su fuente y edad, la tasa base siempre visible, ESPERAR/PASAR son respuestas normales, y cada respuesta termina con \
+"Tu decisión. Tú presionas el botón.". Empieza por fg_tarjeta. Si el usuario suena alterado, usa fg_coach con su texto.
 Usa fg_mercado y fg_correr_mesa para analizar; fg_agente para ver el detalle de un agente; fg_escanear para buscar la \
 mejor cripto. Cuando tengas una conclusión, registra tu opinión con grok_veredicto. Todo es MODO PAPEL: no existen \
 órdenes reales por aquí. No puedes cambiar el plan ni el stop; solo aprobar, pedir precaución o vetar. Responde al \
@@ -242,6 +261,51 @@ class GrokBridge:
         self._log("grok_veredicto", {"veredicto": v, "papel": abrir_en_papel}, f"{v} · {resumen[:120]} · {msg}")
         return {"ok": True, "mensaje": msg, "modo": "papel"}
 
+    # ------------------------------------------------------------- copiloto (tarjeta, COACH, reglas, SCRIBE)
+    def card(self, symbol: str, direction: str = "Auto") -> dict:
+        sym, market = self._symbol(symbol)
+        direction = direction.upper() if direction and direction.upper() in ("LONG", "SHORT") else "Auto"
+        dec = self.s.desk.run(sym, market, self._capital(), direction=direction, operable=True)
+        self.last_dec = dec
+        self.set(last=decision_dict(dec))
+        c = self.s.copilot.card(dec)
+        self._log("fg_tarjeta", {"simbolo": sym, "direccion": direction}, c["text"].splitlines()[0],
+                  [r.agent for r in dec.results])
+        st = self.state()
+        st["last_card"] = c["text"]
+        self.save(st)
+        return {"tarjeta": c["text"], "banda": c["band"], "score": c["score"], "fomo": c["fomo"],
+                "por_que_fomo": c["fomo_why"], "pausado_por_reglas": c["paused"], "tasa_base": c["base_rate"],
+                "plan": c["plan"], "modo": "papel / tú operas"}
+
+    def coach(self, texto: str = "") -> dict:
+        cp = self.s.copilot
+        out = {"estado": cp.coach.status()}
+        if texto:
+            reply = cp.coach.tilt(texto)
+            if reply:
+                out["responde_primero_el_coach"] = reply
+        self._log("fg_coach", {"texto": (texto or "")[:60]}, out["estado"]["blocked"] or "sin bloqueos")
+        return out
+
+    def rules(self) -> dict:
+        cp = self.s.copilot
+        st = cp.rules.state()
+        self._log("fg_reglas", {}, f"reglas v{st['version']}")
+        return {"version": st["version"], "rules_md": cp.rules.markdown(cp.coach.bankroll()), "valores": st["values"],
+                "pendientes": st["pending"], "nota": "Las reglas solo las cambia el usuario desde la app."}
+
+    def summary(self, periodo: str = "dia") -> dict:
+        cp = self.s.copilot
+        try:
+            cp.scribe.grade(self.s.history, int(cp.rules.values()["grade_after_min"]))
+        except Exception:  # noqa: BLE001
+            pass
+        days = 7 if (periodo or "").lower().startswith(("sem", "week")) else 1
+        txt = cp.scribe.summary(cp.coach, days)
+        self._log("fg_resumen", {"periodo": periodo}, txt.splitlines()[1] if "\n" in txt else txt)
+        return {"resumen": txt}
+
     # ------------------------------------------------------------- servidor MCP
     def build(self):
         from mcp.server.mcpserver import MCPServer
@@ -287,6 +351,31 @@ class GrokBridge:
         def grok_veredicto(veredicto: str, confianza: int, resumen: str, razones: list[str] | None = None,
                            riesgos: list[str] | None = None, abrir_en_papel: bool = False) -> dict:
             return self.verdict(veredicto, confianza, resumen, razones, riesgos, abrir_en_papel)
+
+        @srv.tool(description="TRADE CARD con formato fijo de una cripto (corre la mesa de 12 agentes): banda GREEN/YELLOW/"
+                              "RED/SKIP, score, por qué, seguridad, momentum, mi lectura, plan, FOMO, TASA BASE y reglas. "
+                              "Úsala primero y cópiala tal cual.", annotations=ro)
+        def fg_tarjeta(simbolo: str, direccion: str = "Auto") -> dict:
+            return self.card(simbolo, direccion)
+
+        @srv.tool(description="Estado del COACH: operaciones y P&L de hoy, racha de pérdidas, pausa, límites, hora "
+                              "límite. Pasa en `texto` lo que escribió el usuario si suena alterado (tilt).", annotations=ro)
+        def fg_coach(texto: str = "") -> dict:
+            return self.coach(texto)
+
+        @srv.tool(description="Las reglas del usuario (rules.md versionado). Solo lectura.", annotations=ro)
+        def fg_reglas() -> dict:
+            return self.rules()
+
+        @srv.tool(description="Resumen de SCRIBE: periodo 'dia' o 'semana' (operaciones, P&L, tarjetas por banda, "
+                              "calificaciones A-D, fugas).", annotations=ro)
+        def fg_resumen(periodo: str = "dia") -> dict:
+            return self.summary(periodo)
+
+        @srv.prompt(name="copiloto_fg", description="Prompt del copiloto FG VIEW para futuros de Binance (reglas de "
+                                                    "verdad, Trade Card, COACH, preguntas y lo que nunca hace).")
+        def copiloto_fg() -> str:
+            return copilot_prompt()
 
         return srv
 

@@ -66,6 +66,7 @@ def render_grok(svc, req) -> None:
            "Pídele a Grok que corra la mesa: aquí se anima todo."],
           "Todo lo que Grok haga por aquí es análisis o modo papel: no hay órdenes reales por MCP.")
     _connection(br)
+    _copilot(svc, br)
     stt = br.state()
     ev = stt["events"]
     last_ev = ev[-1] if ev else None
@@ -122,6 +123,93 @@ def _connection(br) -> None:
             br.start(int(stt["port"]))
         st.rerun()
     y.caption(f"Dirección local (solo tu PC): `{br.local_url()}` · Para usarlo sin la app: `python -m engine.fgview.grok_mcp`")
+
+
+def _copilot(svc, br) -> None:
+    from engine.fgview.copilot import RULES
+    from engine.fgview.grok_mcp import copilot_prompt
+
+    cp = getattr(svc, "copilot", None)
+    if cp is None:
+        return
+    st.markdown("### 🧭 Copiloto · Trade Card · COACH · Reglas")
+    with st.expander("📜 Prompt del copiloto para Grok (cópialo y pégalo en grok.com)"):
+        st.caption("Adaptación a futuros de Binance del prompt de 21 páginas. En Grok di: «Sigue este prompt». "
+                   "También está dentro del conector como prompt «copiloto_fg».")
+        st.code(copilot_prompt() or "No se encontró docs/GROK_COPILOT_PROMPT.md", language="markdown")
+    cst = cp.coach.status()
+    a, b = st.columns([1.25, 1])
+    with a:
+        st.markdown("#### 📇 Trade Card")
+        c1, c2 = st.columns([1.4, 1], vertical_alignment="bottom")
+        sym = c1.text_input("Cripto", value="BTC", key="cp_sym")
+        if c2.button("Armar tarjeta", key="cp_card", width="stretch"):
+            with st.spinner("La mesa analiza y el copiloto arma la tarjeta…"):
+                try:
+                    out = br.card(sym)
+                    st.session_state["cp_last"] = out["tarjeta"]
+                except Exception as exc:  # noqa: BLE001
+                    st.error(f"No se pudo armar la tarjeta: {exc}")
+        txt = st.session_state.get("cp_last") or br.state().get("last_card")
+        st.code(txt or "Todavía no hay tarjetas. Arma una aquí o pídesela a Grok («usa fg_tarjeta en SOL»).",
+                language="text")
+    with b:
+        st.markdown("#### 🧘 COACH · hoy")
+        k = st.columns(3)
+        k[0].metric("Operaciones", f"{cst['trades_today']}/{cst['max_trades']}")
+        k[1].metric("P&L hoy", f"{cst['pnl_today']:+.2f}", f"{cst['pnl_pct']:+.2f}%")
+        k[2].metric("Abiertas", f"{cst['open']}/{cst['max_open']}")
+        st.caption(f"Racha de pérdidas: {cst['streak']} · capital de referencia ${cst['bankroll']:,.2f}"
+                   + (f" · pausa {cst['cooldown_left_min']} min" if cst["cooldown_left_min"] else ""))
+        if cst["blocked"]:
+            st.warning("PAUSADO POR TUS REGLAS · " + cst["blocked"] + " El piloto automático tampoco entra.")
+        else:
+            st.success("Sin bloqueos: tus reglas permiten operar.")
+    with st.expander("📜 Mis reglas (rules.md) · cambiar"):
+        vals = cp.rules.values()
+        st.code(cp.rules.markdown(cp.coach.bankroll()), language="text")
+        cols = st.columns(3)
+        edits = {}
+        for i, (name, (default, lo, hi, help_)) in enumerate(RULES.items()):
+            col = cols[i % 3]
+            if lo is None:
+                edits[name] = col.text_input(name, value=str(vals[name]), help=help_, key=f"cp_r_{name}")
+            elif isinstance(default, int):
+                edits[name] = col.number_input(name, int(lo), int(hi), int(vals[name]), help=help_, key=f"cp_r_{name}")
+            else:
+                edits[name] = col.number_input(name, float(lo), float(hi), float(vals[name]), step=0.25, help=help_,
+                                               key=f"cp_r_{name}")
+        goal = st.text_input("Mi meta de 30 días (mejor un hábito que una cifra)", value=cp.rules.state()["goal"], key="cp_goal")
+        force = st.checkbox("Forzar aunque haya perdido hace poco (queda anotado)", key="cp_force")
+        if st.button("Guardar reglas", key="cp_save"):
+            msgs = []
+            for name, v in edits.items():
+                if str(v) != str(vals[name]):
+                    try:
+                        msgs.append(cp.rules.change(name, v, who="yo", last_loss_min=cp.coach.last_loss_min(), force=force))
+                    except ValueError as exc:
+                        msgs.append(f"❌ {exc}")
+            if goal != cp.rules.state()["goal"]:
+                cp.rules.set_goal(goal)
+                msgs.append("Meta actualizada.")
+            st.info("  \n".join(msgs) if msgs else "Sin cambios.")
+        pend = cp.rules.state()["pending"]
+        if pend:
+            st.caption("En espera de 12 h: " + " · ".join(f"{p['name']} → {p['value']}" for p in pend))
+    with st.expander("🗒️ SCRIBE · resumen y calificaciones"):
+        try:
+            n = cp.scribe.grade(svc.history, int(cp.rules.values()["grade_after_min"]))
+            if n:
+                st.caption(f"{n} tarjetas recién calificadas.")
+        except Exception:  # noqa: BLE001
+            pass
+        x, y = st.columns(2)
+        x.code(cp.scribe.summary(cp.coach, 1), language="text")
+        y.code(cp.scribe.summary(cp.coach, 7), language="text")
+        graded = [c for c in cp.scribe.cards() if c.get("grade")][-8:]
+        for c in reversed(graded):
+            st.caption(f"{c['at'][:16]} · {c['symbol']} {c['direction']} · {c['band']} {c.get('score')} → nota {c['grade']} "
+                       f"({c.get('result_pct', 0):+.2f}%)")
 
 
 def _feed(br) -> None:

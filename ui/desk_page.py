@@ -160,6 +160,15 @@ def _autopilot(svc, req, market: str, capital: float) -> None:
     guide("El piloto corre la mesa cada minuto y, si los 12 agentes aprueban, abre la operación SOLO. Empieza en PAPEL. "
           "El modo real se desbloquea cuando el papel demuestra resultados (50 operaciones, profit factor ≥ 1.2, "
           "drawdown ≤ 10%) y además tú lo activas.")
+    cop = getattr(svc, "copilot", None)
+    if cop is not None:
+        cst = cop.coach.status()
+        if cst["blocked"]:
+            st.warning("🧭 COACH · PAUSADO POR TUS REGLAS · " + cst["blocked"] + " El piloto no entra hasta que se levante. "
+                       "(Reglas en GROK DESK → Mis reglas.)")
+        else:
+            st.caption(f"🧭 COACH · {cst['trades_today']}/{cst['max_trades']} operaciones hoy · P&L {cst['pnl_pct']:+.2f}% · "
+                       f"racha de pérdidas {cst['streak']} · sin bloqueos")
     unlocked, why = pilot.live_unlocked()
     c = st.columns([1, 1.2, 1, 1])
     on = c[0].toggle("Piloto encendido", value=stt["enabled"], key="ap_on")

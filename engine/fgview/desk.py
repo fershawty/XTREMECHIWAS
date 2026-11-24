@@ -527,6 +527,7 @@ class Desk:
         res, snap, rep, rot, wscore = self.spot(symbol, market, capital, exchange, direction)
         dec = DeskDecision(symbol, rep.direction, [res], rotation=rot, tape=self.tape(snap),
                            ridges=self.ridges(snap, rep.direction))
+        dec.snap = snap  # La Trade Card del copiloto usa precio, velas y su antigüedad
         dec.raw.update(score=rep.score, wscore=wscore, book=(snap.order_book or {}).get("imbalance"),
                        z=self.vwap_z(snap.df5))
         if res.status == "block" and not operable:
@@ -802,6 +803,13 @@ class Autopilot:
             self._log(f"🛑 Pérdida diaria de la mesa {loss / capital * 100:.1f}% ≥ {max_loss:g}%: pausa hasta mañana.")
             self.set(enabled=False)
             return None
+        cop = getattr(s, "copilot", None)
+        if cop is not None:  # 🧭 COACH: tus reglas mandan sobre el piloto (day stop, cooldown, límites, hora límite)
+            why = cop.coach.status()["blocked"]
+            if why:
+                if not st["events"] or st["events"][-1]["text"] != "🧭 " + why:
+                    self._log("🧭 " + why)
+                return None
         if len(s.positions.all()) >= s.risk.max_open:
             return None
         mode = st["mode"]

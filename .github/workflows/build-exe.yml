@@ -249,6 +249,13 @@ jobs:
           - **Windows**: `FGView-V2-Windows.zip` → descomprime y abre `FGView\FGView.exe`
           - **Mac Intel (macOS 12 Monterey o superior)**: `FGView-V2-macOS-Intel.dmg` → arrastra a Aplicaciones; la primera vez Control + clic → Abrir
 
+          **Novedades v5.1 · 🧭 Copiloto (prompt de 21 páginas adaptado a futuros de Binance)**
+          - TRADE CARD con formato fijo (SCORE y banda GREEN/YELLOW/RED/SKIP, por qué, seguridad, momentum, mi lectura, plan, FOMO, TASA BASE, reglas). Cada número con su fuente y edad; nunca promete ganancias.
+          - COACH: medidor FOMO 0-10 que reduce el tamaño, pausa tras rachas de pérdidas, stop del día, límites, hora límite y respuesta al "tilt". El piloto automático respeta tus reglas.
+          - Tus reglas (rules.md) versionadas, con espera de 12 h si las cambias justo después de una pérdida.
+          - SCRIBE: califica cada tarjeta con las velas reales (A-D), tasa base honesta, resumen del día y de la semana con fugas.
+          - Nuevas herramientas MCP para Grok (fg_tarjeta, fg_coach, fg_reglas, fg_resumen) y el prompt del copiloto listo para pegar en grok.com.
+
           **Novedades v5.0 · 🤖 GROK DESK (agentes de Grok vía MCP)**
           - Nueva página GROK DESK, igual a FG DESK (red de agentes, orbitales, tape, Galton, cordilleras), manejada por los agentes de Grok desde grok.com.
           - FG VIEW trae su propio servidor MCP: en grok.com → Connectors → Custom pegas la dirección y Grok puede correr la mesa, ver mercado, ballenas y funding, consultar cada agente y dar su veredicto.

@@ -886,6 +886,8 @@ def test_signal_rotation_and_autopilot_gates(fgdb):
     ok, why = pilot.live_unlocked()
     assert not ok and "0/50" in why
     _desk_forced(fgdb)
+    fgdb.copilot.rules.change("cutoff", "23:59")  # Que la hora límite del COACH no dependa del reloj del test
+    fgdb.copilot.rules.change("day_start", "00:00")
     pilot.set(enabled=True, mode="live")  # Real pedido pero bloqueado -> opera en papel
     dec = pilot.tick(1000, "demo", force=True)
     assert dec is not None and dec.sent and fgdb.positions.all()[0]["mode"] == "papel"
@@ -1058,3 +1060,96 @@ def test_grok_mcp_bridge_tools_and_paper_only(fgdb):
     assert br.new_token() != old
     br.set(tunnel="https://abc.trycloudflare.com/")
     assert br.public_url() == f"https://abc.trycloudflare.com/mcp/{br.state()['token']}"
+
+
+def test_copilot_card_format_and_truth_rules(fgdb):
+    cp = fgdb.copilot
+    cp.rules.change("cutoff", "23:59")
+    cp.rules.change("day_start", "00:00")
+    dec = _desk_forced(fgdb).run("DEMO/USDT", "demo", 1000)
+    c = cp.card(dec)
+    t = c["text"]
+    for label in ("SCORE", "POR QUÉ", "SEGURIDAD", "MOMENTUM", "MI LECTURA", "PLAN", "FOMO", "TASA BASE", "REGLAS"):
+        assert label in t, label
+    assert "DEMO (datos de prueba)" in t and "Tú presionas el botón" in t and "n=0" in t  # Fuente honesta
+    for banned in ("seguro", "garantizado", "moon", "LFG", "100x"):
+        assert banned not in t.lower()
+    assert c["band"] in ("GREEN", "YELLOW", "RED") and cp.scribe.cards()[-1]["symbol"] == "DEMO/USDT"
+    cp.card(dec)  # Misma cripto/dirección en 5 min: se edita, no se duplica
+    assert len(cp.scribe.cards()) == 1
+
+
+def test_coach_day_stop_streak_tilt_and_rule_hold(fgdb):
+    from datetime import datetime, timezone
+
+    cp = fgdb.copilot
+    cp.rules.change("cutoff", "23:59")
+    cp.rules.change("day_start", "00:00")
+    assert cp.coach.status()["blocked"] is None
+    now = datetime.now(timezone.utc).isoformat()
+    for _ in range(2):
+        fgdb.journal.add({"opened_at": now, "coin": "SOL", "direction": "LONG", "pnl": -5.0, "duration_min": 1,
+                          "notes": "DESK · papel"})
+    st = cp.coach.status()
+    assert st["streak"] == 2 and "Pausa" in (st["blocked"] or "")
+    fgdb.journal.add({"opened_at": now, "coin": "ETH", "direction": "LONG", "pnl": -100.0, "duration_min": 1})
+    assert "stop del día" in cp.coach.status()["blocked"]
+    assert "Pausamos" in cp.coach.tilt("ya me harté, lo recupero en la siguiente")
+    assert "Línea de la Vida" in cp.coach.tilt("tengo una deuda y ya no sé")
+    assert cp.coach.tilt("¿cómo va BTC?") is None
+    msg = cp.rules.change("risk_pct", 3.0, last_loss_min=cp.coach.last_loss_min())
+    assert "espera 12 h" in msg and cp.rules.values()["risk_pct"] == 1.0
+    assert "forzado" in cp.rules.change("risk_pct", 3.0, last_loss_min=1, force=True)
+    import pytest as _p
+    with _p.raises(ValueError):
+        cp.rules.change("risk_pct", 99)
+    meter, why = cp.coach.fomo(None, "LONG")
+    assert meter >= 2 and cp.coach.size_factor(9) == 0.5
+
+
+def test_scribe_grades_cards_and_base_rate(fgdb):
+    from datetime import datetime, timedelta, timezone
+
+    cp = fgdb.copilot
+    df, _ = fgdb.history.get("DEMO/USDT", "demo", "5m", 3)
+    t0 = df.index[-60].to_pydatetime()
+    px = float(df["close"].iloc[-60])
+    hi = float(df["high"].iloc[-59:].max())
+    plan = {"entry": px, "sl": px * 0.5, "tp1": min(hi, px * 1.0001), "tp3": px * 10, "hold_min": 45}
+    cp.scribe.record({"at": t0.isoformat(), "ts": 0, "symbol": "DEMO/USDT", "direction": "LONG", "band": "GREEN",
+                      "score": 60, "plan": plan})
+    assert cp.scribe.grade(fgdb.history, after_min=60) == 1
+    g = cp.scribe.cards()[-1]
+    assert g["grade"] in ("B", "SIN MOVIMIENTO")
+    br = cp.scribe.base_rate(62)
+    assert br["n"] == 1 and "muy pocas para confiar" in cp.scribe.base_rate_line(br)
+    assert "Operaciones" in cp.scribe.summary(cp.coach, 7)
+
+
+def test_grok_mcp_copilot_tools(fgdb):
+    br = fgdb.grok
+    fgdb.copilot.rules.change("cutoff", "23:59")
+    fgdb.copilot.rules.change("day_start", "00:00")
+    _desk_forced(fgdb)
+    out = br.card("DEMO")
+    assert "SCORE" in out["tarjeta"] or "SKIP" in out["tarjeta"]
+    assert "estado" in br.coach("lo recupero ya") and "responde_primero_el_coach" in br.coach("lo recupero ya")
+    assert "MIS REGLAS" in br.rules()["rules_md"]
+    assert "Operaciones" in br.summary("semana")["resumen"]
+    from engine.fgview.grok_mcp import copilot_prompt
+    assert "REGLAS DE VERDAD" in copilot_prompt()
+
+
+def test_autopilot_respects_coach(fgdb):
+    from datetime import datetime, timezone
+
+    _desk_forced(fgdb)
+    fgdb.copilot.rules.change("cutoff", "23:59")
+    fgdb.copilot.rules.change("day_start", "00:00")
+    fgdb.copilot.rules.change("max_trades_day", 1)
+    fgdb.journal.add({"opened_at": datetime.now(timezone.utc).isoformat(), "coin": "SOL", "direction": "LONG",
+                      "pnl": 1.0, "notes": "DESK · papel"})
+    pilot = fgdb.autopilot
+    pilot.set(enabled=True)
+    assert pilot.tick(1000, "demo", force=True) is None
+    assert any("Límite alcanzado" in e["text"] for e in pilot.state()["events"])

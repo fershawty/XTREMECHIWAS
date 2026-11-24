@@ -75,6 +75,7 @@ class FGServices:
     desk: object | None = None  # FG DESK (6 agentes)
     ladder_desk: object | None = None  # 🪜 Modo escalera de la mesa
     grok: object | None = None  # 🤖 GROK DESK: puente MCP para los agentes de Grok
+    copilot: object | None = None  # 🧭 Copiloto: Trade Card, COACH, reglas y SCRIBE
     autopilot: object | None = None  # Piloto automático de la mesa
     extras: dict = field(default_factory=dict)
 
@@ -120,7 +121,10 @@ class FGServices:
         inst.ladder_desk = DeskLadder(db, journal)
         inst.desk = Desk(inst, config)
         inst.autopilot = Autopilot(inst.desk)
+        from engine.fgview.copilot import Copilot
         from engine.fgview.grok_mcp import GrokBridge
+
+        inst.copilot = Copilot(inst)
 
         inst.grok = GrokBridge(inst)
         return inst

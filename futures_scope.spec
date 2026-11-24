@@ -30,7 +30,7 @@ if not tcltk_info.available:
 datas, binaries, hiddenimports = [], [], []
 
 # Paquetes con archivos estáticos / binarios que hay que llevar completos
-for pkg in ("streamlit", "plotly", "curl_cffi", "mcp"):
+for pkg in ("streamlit", "plotly", "curl_cffi"):
     d, b, h = collect_all(pkg)
     datas += d
     binaries += b
@@ -38,6 +38,10 @@ for pkg in ("streamlit", "plotly", "curl_cffi", "mcp"):
 
 # Zonas horarias (Windows no trae base de datos tz) y certificados TLS
 datas += collect_data_files("tzdata") + collect_data_files("certifi")
+
+# SDK de MCP (servidor para GROK DESK): sin su CLI (mcp.cli necesita typer, que no usamos)
+hiddenimports += collect_submodules("mcp", filter=lambda name: not name.startswith("mcp.cli"))
+datas += collect_data_files("mcp") + copy_metadata("mcp")
 
 # Metadatos que algunas librerías consultan en tiempo de ejecución
 for pkg in ("streamlit", "plotly", "yfinance", "ccxt", "pandas", "numpy", "requests", "altair", "pyarrow"):
@@ -76,6 +80,7 @@ datas += [
     ("assets/icon.png", "assets"),
     ("assets/logo.png", "assets"),
     ("assets/logo.svg", "assets"),
+    ("docs/GROK_COPILOT_PROMPT.md", "docs"),
 ]
 
 a = Analysis(
@@ -110,8 +115,8 @@ if sys.platform == "darwin":
         info_plist={
             "CFBundleName": "FGView",
             "CFBundleDisplayName": "FG VIEW",
-            "CFBundleShortVersionString": "5.0.0",
-            "CFBundleVersion": "5.0.0",
+            "CFBundleShortVersionString": "5.1.0",
+            "CFBundleVersion": "5.1.0",
             "LSMinimumSystemVersion": "12.0",
             "NSHighResolutionCapable": True,
             "NSHumanReadableCopyright": "FG VIEW V2 · BY GUS X FER X ALFREDOBONUS",

@@ -14,6 +14,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 
 import pandas as pd
 
@@ -30,6 +31,7 @@ class MarketSnapshot:
     order_book: dict | None
     source: str
     warnings: list[str] = field(default_factory=list)
+    fetched_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))  # Para mostrar la antigüedad
 
     @property
     def price(self) -> float:
