@@ -531,24 +531,33 @@ def equipo_html(snap: dict, height: int = 460) -> str:
 
 _EQUIPO = r"""
 <div id="eq">
-  <div class="hd">◆ EQUIPO GROK <span>— 11 AGENTES · VOTOS −2…+2 · SOLO PAPEL</span></div>
+  <div class="hd">◆ EQUIPO GROK <span>— 11 AGENTES · VOTAN −2…+2 · G-JUDGE DECIDE · SOLO PAPEL</span></div>
   <div class="kpis" id="k"></div>
   <canvas id="ring"></canvas>
-  <div class="tbl" id="tbl"></div>
+  <div class="side">
+    <div class="st">VEREDICTOS DE GROK</div><div class="tbl" id="tbl"></div>
+    <div class="st" style="margin-top:8px">OPERACIONES EN PAPEL</div><div class="tbl" id="ops"></div>
+  </div>
 </div>
 <style>
-  html,body{margin:0;background:#05070b;color:#E6E9EF;font-family:ui-monospace,monospace}
-  #eq{height:__H__px;background:#0a0e16;border:1px solid rgba(148,163,184,.14);border-radius:12px;position:relative;overflow:hidden}
-  .hd{position:absolute;left:12px;top:8px;font-size:10px;letter-spacing:.18em;color:#C9CED8}
-  .hd span{color:#566074}
-  .kpis{position:absolute;left:12px;right:12px;top:28px;display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
-  .kpi{border:1px solid rgba(148,163,184,.14);border-radius:8px;padding:4px 8px;background:#06080d}
-  .kpi i{font-style:normal;font-size:8px;letter-spacing:.12em;color:#566074}
-  .kpi b{display:block;font-size:14px;font-variant-numeric:tabular-nums}
-  canvas{position:absolute;left:0;right:0;top:78px;height:210px;width:100%}
-  .tbl{position:absolute;left:10px;right:10px;bottom:8px;height:150px;overflow:auto;font-size:10px}
-  .r{display:grid;grid-template-columns:52px 90px 54px 88px 1fr;gap:6px;padding:2px 0;border-bottom:1px solid rgba(148,163,184,.08)}
-  .pause{position:absolute;left:12px;right:12px;top:92px;background:rgba(245,166,35,.15);color:#F2D27A;padding:4px 8px;border-radius:8px;font-size:11px}
+  html,body{margin:0;background:#05070b;color:#E6E9EF;font-family:'JetBrains Mono',ui-monospace,monospace}
+  #eq{height:__H__px;background:radial-gradient(ellipse at 38% 55%,#111a2b 0%,#0a0e16 55%,#070a10 100%);border:1px solid rgba(245,208,254,.22);
+      border-radius:12px;position:relative;overflow:hidden;box-shadow:0 0 26px rgba(245,208,254,.06)}
+  .hd{position:absolute;left:12px;top:9px;font-size:10px;letter-spacing:.18em;color:#C9CED8;font-weight:800}
+  .hd span{color:#566074;font-weight:400}
+  .kpis{position:absolute;left:12px;right:12px;top:30px;display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+  .kpi{border:1px solid rgba(148,163,184,.14);border-radius:8px;padding:5px 9px;background:#06080d}
+  .kpi i{font-style:normal;font-size:8px;letter-spacing:.14em;color:#566074}
+  .kpi b{display:block;font-size:15px;font-variant-numeric:tabular-nums;margin-top:1px}
+  canvas{position:absolute;left:0;top:84px;bottom:0;width:66%;height:calc(100% - 84px)}
+  .side{position:absolute;right:10px;top:86px;bottom:10px;width:33%;display:flex;flex-direction:column}
+  .st{font-size:9px;letter-spacing:.16em;color:#8C95A8;margin-bottom:4px}
+  .tbl{flex:1;overflow:auto;font-size:10px;border:1px solid rgba(148,163,184,.12);border-radius:8px;background:#06080d;padding:4px 6px;min-height:60px}
+  .r{display:grid;grid-template-columns:62px 1fr auto;gap:6px;padding:3px 0;border-bottom:1px solid rgba(148,163,184,.07);align-items:center}
+  .pill{padding:1px 7px;border-radius:9px;font-size:9px;font-weight:800}
+  .empty{color:#566074;padding:6px 2px;line-height:1.5}
+  .pause{position:absolute;left:12px;top:86px;width:62%;background:rgba(245,166,35,.14);border:1px solid rgba(245,166,35,.35);color:#F2D27A;
+         padding:5px 9px;border-radius:8px;font-size:11px;z-index:2}
 </style>
 <script>
 __CRITTERS__
@@ -556,34 +565,74 @@ const G=__DATA__;
 const $=id=>document.getElementById(id);
 const na=v=>v===null||v===undefined||v===""?"n/a":v;
 const money=v=>v===null||v===undefined?"n/a":(v<0?"−$":"$")+Math.abs(v).toFixed(2);
+const VC=v=>v==="APRUEBA"?"#3DDC97":v==="PRECAUCION"?"#F5A623":v==="VETA"?"#FF4D6D":"#8C95A8";
+const voted=(G.agents||[]).some(a=>a.vote!==null&&a.vote!==undefined);
 $("k").innerHTML=[
- ["BANKROLL PAPEL", money(G.bankroll)],
- ["P&L HOY", money(G.pnl)],
- ["HOY", na(G.trades_today)+"/"+na(G.max_trades)],
- ["ABIERTAS", na(G.open)+"/"+na(G.max_open)],
- ["JUEZ", (G.judge||"n/a")+(G.suma===null||G.suma===undefined?"":" · Σ "+G.suma)],
-].map(x=>`<div class="kpi"><i>${x[0]}</i><b>${x[1]}</b></div>`).join("");
-if(G.paused){const p=document.createElement("div"); p.className="pause"; p.textContent="PAUSADO POR TUS REGLAS · "+G.paused; document.getElementById("eq").appendChild(p);}
-const rows=(G.rows||[]);
-const ops=(G.ops||[]).map(o=>`<div class="r"><span>papel</span><span>${o.coin} ${o.side}</span><span>${o.who}</span><span>e ${na(o.entry)}</span><span>SL ${na(o.sl)}</span></div>`).join("");
-$("tbl").innerHTML=(rows.length?rows.map(r=>`<div class="r"><span>${r.at}</span><span>${r.symbol}</span><span>${r.side}</span><span>${r.veredicto}</span><span>Σ ${na(r.suma)} · ${na(r.confianza)}% · ${r.abierta?"papel":"sin abrir"}</span></div>`).join(""):'<div class="r"><span>n/a</span><span>sin veredictos</span></div>')+ops;
-const cv=$("ring"), x=cv.getContext("2d");
-function fit(){const d=Math.min(2,devicePixelRatio||1); cv.width=cv.clientWidth*d; cv.height=cv.clientHeight*d; x.setTransform(d,0,0,d,0,0);}
-function frame(t){
+ ["BANKROLL PAPEL", money(G.bankroll), "#E6E9EF"],
+ ["P&L HOY", money(G.pnl), (G.pnl||0)>=0?"#3DDC97":"#FF4D6D"],
+ ["OPERACIONES HOY", na(G.trades_today)+"/"+na(G.max_trades), "#E6E9EF"],
+ ["ABIERTAS", na(G.open)+"/"+na(G.max_open), "#E6E9EF"],
+ ["G-JUDGE", G.judge?(G.judge+(G.suma===null||G.suma===undefined?"":" · Σ "+(G.suma>0?"+":"")+G.suma)):"sin ronda", VC(G.judge)],
+].map(x=>`<div class="kpi"><i>${x[0]}</i><b style="color:${x[2]}">${x[1]}</b></div>`).join("");
+if(G.paused){const p=document.createElement("div"); p.className="pause"; p.textContent="PAUSADO POR TUS REGLAS · "+G.paused; $("eq").appendChild(p);}
+const rows=G.rows||[];
+$("tbl").innerHTML=rows.length?rows.slice().reverse().map(r=>`<div class="r"><span style="color:#8C95A8">${r.at}</span>
+  <span>${r.symbol} ${r.side} · Σ ${na(r.suma)} · ${na(r.confianza)}% · ${r.abierta?"abierta en papel":"sin abrir"}</span>
+  <span class="pill" style="background:${VC(r.veredicto)}22;color:${VC(r.veredicto)}">${r.veredicto}</span></div>`).join("")
+  :'<div class="empty">Sin veredictos todavía.<br>En Grok escribe «ronda», o usa la ronda manual de esta página.</div>';
+const ops=G.ops||[];
+$("ops").innerHTML=ops.length?ops.map(o=>`<div class="r"><span class="pill" style="background:${o.who==="GROK"?"#F5D0FE22":"#5AC8FA22"};color:${o.who==="GROK"?"#F5D0FE":"#5AC8FA"}">${o.who}</span>
+  <span>${o.coin} ${o.side} · entrada ${na(o.entry)}</span><span style="color:#FF4D6D">SL ${na(o.sl)}</span></div>`).join("")
+  :'<div class="empty">Sin operaciones abiertas en papel.</div>';
+const cv=$("ring"), x=cv.getContext("2d"); let W=0,H=0;
+function fit(){const d=Math.min(2,devicePixelRatio||1); W=cv.clientWidth; H=cv.clientHeight; cv.width=W*d; cv.height=H*d; x.setTransform(d,0,0,d,0,0);}
+const rgba=(h,a)=>{const n=parseInt(h.slice(1),16);return 'rgba('+(n>>16&255)+','+(n>>8&255)+','+(n&255)+','+Math.max(0,Math.min(1,a)).toFixed(3)+')';};
+const stars=[...Array(70)].map((_,i)=>[(i*137.5)%1,(i*71.3)%1]);
+const bolts=[];
+function frame(ms){
+  const t=ms/1000;
   if(!cv.clientWidth){requestAnimationFrame(frame); return;}
-  if(Math.abs(cv.width/Math.min(2,devicePixelRatio||1)-cv.clientWidth)>1) fit();
-  const w=cv.clientWidth,h=cv.clientHeight,cx=w/2,cy=h/2+6;
-  x.clearRect(0,0,w,h);
-  drawCritter(x,"GROK",cx,cy-6,22,"#F5D0FE",t/1000,"info",0,-1);
-  (G.agents||[]).forEach((a,i)=>{
-    const ang=-Math.PI/2+i*(6.283/11)+t*0.00025;
-    const px=cx+Math.cos(ang)*Math.min(w*0.42,280), py=cy+Math.sin(ang)*Math.min(h*0.36,78);
-    const col=a.vote==null?"#8C95A8":a.vote>0?"#3DDC97":a.vote<0?"#FF4D6D":"#8C95A8";
-    const pulse=a.key==="G-JUDGE"?(1+Math.sin(t*0.006)*0.08):1;
-    x.strokeStyle=col; x.globalAlpha=0.45; x.beginPath(); x.arc(px,py,16*pulse,0,6.28); x.stroke(); x.globalAlpha=1;
-    drawCritter(x,a.critter,px,py,13*pulse,a.color,t/1000,a.vote==null?"idle":a.vote>0?"pass":a.vote<0?"block":"info",(cx-px)/200,(cy-py)/200);
-    x.fillStyle=col; x.font="10px monospace"; x.textAlign="center"; x.fillText(a.vote==null?"n/a":(a.vote>0?"+"+a.vote:String(a.vote)), px, py+22);
-  });
+  if(Math.abs(W-cv.clientWidth)>1||Math.abs(H-cv.clientHeight)>1) fit();
+  const cx=W*0.5, cy=H*0.5, RX=Math.min(W*0.42,330), RY=Math.min(H*0.40,150), jc=VC(G.judge);
+  x.clearRect(0,0,W,H);
+  stars.forEach((s,i)=>{x.fillStyle='rgba(200,210,230,'+(.05+.06*Math.sin(t+i))+')'; x.fillRect(s[0]*W,s[1]*H,1.2,1.2);});
+  // Anillos orbitales (elipses que giran y respiran)
+  x.globalCompositeOperation='lighter';
+  ['#F5D0FE','#B388FF','#5AC8FA','#F2D27A'].forEach((c,k)=>{x.save(); x.translate(cx,cy); x.rotate(Math.sin(t*0.15+k)*0.25+k*0.5);
+    x.strokeStyle=rgba(c,.16+.06*Math.sin(t*1.3+k)); x.lineWidth=1.2; x.beginPath(); x.ellipse(0,0,RX*(0.55+k*0.16),RY*(0.55+k*0.16),0,0,6.283); x.stroke(); x.restore();});
+  x.globalCompositeOperation='source-over';
+  // Halo del veredicto
+  const pulse=(t%2.4)/2.4; x.strokeStyle=rgba(jc,(1-pulse)*.5); x.lineWidth=2; x.beginPath(); x.arc(cx,cy,30+pulse*90,0,6.283); x.stroke();
+  const hg=x.createRadialGradient(cx,cy,8,cx,cy,90); hg.addColorStop(0,rgba(jc,.28)); hg.addColorStop(1,rgba(jc,0)); x.fillStyle=hg; x.beginPath(); x.arc(cx,cy,90,0,6.283); x.fill();
+  // Agentes en órbita
+  const pos=(G.agents||[]).map((a,i)=>{const ang=-Math.PI/2+i*(6.283/(G.agents.length||11))+t*0.12; const z=Math.sin(ang);
+    return {a,i,px:cx+Math.cos(ang)*RX, py:cy+z*RY, z};});
+  // Rayos de Grok a los agentes que votaron
+  if(voted&&Math.random()<0.18){const cand=pos.filter(o=>o.a.vote!==null&&o.a.vote!==undefined); if(cand.length) bolts.push({o:cand[Math.floor(Math.random()*cand.length)],l:1});}
+  for(let k=bolts.length-1;k>=0;k--){const b=bolts[k], o=b.o, c=o.a.vote>0?'#3DDC97':o.a.vote<0?'#FF4D6D':'#F5D0FE';
+    x.save(); x.strokeStyle=rgba(c,b.l*.85); x.lineWidth=1.5; x.shadowColor=c; x.shadowBlur=14; x.beginPath(); x.moveTo(cx,cy);
+    for(let s=1;s<=9;s++){const u=s/9; x.lineTo(cx+(o.px-cx)*u+(s<9?(Math.random()-.5)*18:0), cy+(o.py-cy)*u+(s<9?(Math.random()-.5)*18:0));} x.stroke(); x.restore();
+    b.l-=0.08; if(b.l<=0) bolts.splice(k,1);}
+  // Líneas finas núcleo → agente (pulso viajando)
+  pos.forEach(o=>{const col=o.a.vote==null?'#3a4150':o.a.vote>0?'#3DDC97':o.a.vote<0?'#FF4D6D':'#8C95A8';
+    x.strokeStyle=rgba(col,o.a.vote==null?.25:.45); x.lineWidth=1; x.setLineDash(o.a.vote==null?[3,5]:[]); x.beginPath(); x.moveTo(cx,cy); x.lineTo(o.px,o.py); x.stroke(); x.setLineDash([]);
+    if(o.a.vote!=null){const u=((t*0.5)+o.i*0.09)%1; x.fillStyle=rgba(col,.95); x.beginPath(); x.arc(cx+(o.px-cx)*u,cy+(o.py-cy)*u,2.2,0,6.283); x.fill();}});
+  // Núcleo: Grok
+  drawCritter(x,"GROK",cx,cy,26,"#F5D0FE",t,voted?"pass":"info",0,0);
+  x.textAlign="center"; x.font="800 10px monospace"; x.fillStyle="#F5D0FE"; x.fillText("GROK · MCP",cx,cy+46);
+  // Agentes (los de atrás primero)
+  pos.slice().sort((p,q)=>p.z-q.z).forEach(o=>{const a=o.a, sc=0.85+0.25*(o.z+1)/2, judge=a.key==="G-JUDGE";
+    const col=a.vote==null?"#8C95A8":a.vote>0?"#3DDC97":a.vote<0?"#FF4D6D":"#C9CED8";
+    const r=(judge?20:16)*sc*(judge?(1+Math.sin(t*5)*0.07):1);
+    x.strokeStyle=judge&&G.judge?jc:col; x.globalAlpha=judge&&G.judge?0.9:(a.vote==null?0.3:0.6); x.lineWidth=judge?2:1.2;
+    x.beginPath(); x.arc(o.px,o.py,r+4,0,6.283); x.stroke(); x.globalAlpha=1;
+    const md=judge&&G.judge?(G.judge==="APRUEBA"?"pass":G.judge==="VETA"?"block":"info"):a.vote==null?(voted?"info":"idle"):a.vote>0?"pass":a.vote<0?"block":"info";
+    drawCritter(x,a.critter,o.px,o.py,r*0.8,a.color,t+o.i,md,(cx-o.px)/220,(cy-o.py)/220);
+    x.font="800 9px monospace"; x.fillStyle=a.color; x.fillText(a.key.replace("G-",""),o.px,o.py+r+14);
+    if(a.vote!=null){x.font="800 10px monospace"; x.fillStyle=col; x.fillText(a.vote>0?"+"+a.vote:String(a.vote),o.px,o.py+r+26);}
+    else if(judge&&G.judge){x.font="800 10px monospace"; x.fillStyle=jc; x.fillText(G.judge,o.px,o.py+r+26);}});
+  if(!voted){x.font="800 11px monospace"; x.fillStyle="#8C95A8"; x.fillText("ESPERANDO LA PRIMERA RONDA DE GROK",cx,H-26);
+    x.font="9px monospace"; x.fillStyle="#566074"; x.fillText("en Grok escribe «ronda», o corre una ronda manual aquí",cx,H-12);}
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);

@@ -10,6 +10,8 @@ ver el mercado, consultar un agente, dejar su veredicto) se anima aquí en vivo.
 
 from __future__ import annotations
 
+import json
+
 import streamlit as st
 import streamlit.components.v1 as components
 
@@ -78,8 +80,21 @@ def render_grok(svc, req) -> None:
             if fetched.tzinfo is None:
                 fetched = fetched.replace(tzinfo=timezone.utc)
             pay["age_s"] = max(0, int((datetime.now(timezone.utc) - fetched).total_seconds()))
-        components.html(terminal_html(pay, _logo_svg()), height=1470, scrolling=False)
-        components.html(equipo_html(team_snapshot(svc, br)), height=460, scrolling=False)
+        # Solo se vuelve a generar si cambian los datos: así las animaciones (velas, Galton, traza, cordilleras)
+        # no se reinician cada 5 s. La hora y la cuenta regresiva las lleva el propio navegador.
+        pay.pop("now", None)
+        if pay.get("age_s") is not None:
+            pay["age_s"] = 0 if pay["age_s"] <= 30 else int(pay["age_s"] // 60 * 60)
+        cache = st.session_state.setdefault("gk_html_cache", {})
+        sig = json.dumps(pay, sort_keys=True, default=str)
+        if cache.get("t_sig") != sig:
+            cache["t_sig"], cache["t_html"] = sig, terminal_html(pay, _logo_svg())
+        components.html(cache["t_html"], height=1470, scrolling=False)
+        snap_team = team_snapshot(svc, br)
+        sig2 = json.dumps(snap_team, sort_keys=True, default=str)
+        if cache.get("e_sig") != sig2:
+            cache["e_sig"], cache["e_html"] = sig2, equipo_html(snap_team, height=560)
+        components.html(cache["e_html"], height=566, scrolling=False)
     st.fragment(_paint, run_every=5 if br.running() else None)()
     _audit_panel(svc, br)
     _connection(br)

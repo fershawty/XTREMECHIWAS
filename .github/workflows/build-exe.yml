@@ -249,6 +249,12 @@ jobs:
           - **Windows**: `FGView-V2-Windows.zip` → descomprime y abre `FGView\FGView.exe`
           - **Mac Intel (macOS 12 Monterey o superior)**: `FGView-V2-macOS-Intel.dmg` → arrastra a Aplicaciones; la primera vez Control + clic → Abrir
 
+          **Novedades v5.4 · GROK DESK v2 (visual pulido)**
+          - GROK DESK con la terminal completa estilo FG (MESA PNL, THE TAPE con libro, ORBITALES con agentes, pipeline, traza, Pricer con Galton y cordilleras) y el panel EQUIPO GROK: Grok al centro, los 11 agentes G-* orbitando con su voto, rayos hacia los que votaron, G-JUDGE con su veredicto, veredictos y operaciones en papel.
+          - Arreglo: la página se recargaba cada 5 s y reiniciaba todas las animaciones (velas a medias, Galton sin bolitas, cordilleras aplastadas). Ahora solo se actualiza cuando cambian los datos.
+          - Arreglo: las etiquetas de los 12 agentes ya no se enciman con las tarjetas del ticket en ORBITALES (también en FG DESK).
+          - Números con conteo animado, líneas de entrada/SL/TP1 en THE TAPE, libro con transición, aviso de dato viejo.
+
           **Novedades v5.3 · GROK DESK con el equipo de agentes de Grok**
           - Nueva terminal animada de GROK DESK con el equipo de Grok en órbita (las esferas se iluminan según su voto y G-JUDGE pulsa con el veredicto).
           - El equipo de Grok en código: votos, G-JUDGE con reglas fijas y rondas guardadas con su reporte (fg_ronda). Respeta al COACH, veta si la mesa dice NO OPERAR y nunca cambia el tamaño ni el stop.

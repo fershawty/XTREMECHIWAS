@@ -444,8 +444,9 @@ function drawOrb(t){const {x,w,h}=cv.cOrb; x.clearRect(0,0,w,h); const {cx,cy,R}
     const lab='TICKET #'+(k+1)+' · '+D.agents[S[k]].key+' → '+D.agents[nx].key; x.font='700 8.5px monospace'; const lw=x.measureText(lab).width+14;
     x.fillStyle='rgba(5,7,11,.85)'; x.strokeStyle='rgba(242,210,122,.7)'; x.beginPath(); x.roundRect(qx-lw/2,qy-30,lw,16,8); x.fill(); x.stroke(); x.fillStyle=GOLD; x.textAlign='center'; x.fillText(lab,qx,qy-19);}
   // Etiquetas de agentes en los bordes del escenario
-  ags.forEach((o,i)=>{const left=i<3||i===6, row=left?(i===6?3:i):(i<6?i-3:i-4); const a=o.a, c=a.color;
-    const x0=left?Math.max(8,w*0.185):Math.min(w-222,w*0.755-108), y0=left?74+row*32:70+row*28;
+  // 6 a la izquierda y 6 a la derecha, debajo de la fila de tarjetas del ticket (no se enciman)
+  const half=Math.ceil(ags.length/2); ags.forEach((o,i)=>{const left=i<half, row=left?i:i-half; const a=o.a, c=a.color;
+    const x0=left?Math.max(8,w*0.19):Math.min(w-222,w*0.755-108), y0=112+row*30;
     if(o.scr){x.strokeStyle=rgba(c,.22); x.setLineDash([2,4]); x.beginPath(); x.moveTo(x0+(left?96:4),y0+12); x.lineTo(o.scr[0],o.scr[1]); x.stroke(); x.setLineDash([]);}
     x.fillStyle='rgba(6,8,13,.86)'; x.strokeStyle=rgba(c,.5); x.beginPath(); x.roundRect(x0,y0,102,24,7); x.fill(); x.stroke();
     x.font='800 9px monospace'; x.textAlign='left'; x.fillStyle=c; x.fillText(a.key,x0+6,y0+10); x.font='8px monospace'; x.fillStyle=stCol(a);
