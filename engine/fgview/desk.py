@@ -34,6 +34,7 @@ from datetime import datetime, timezone
 import numpy as np
 import pandas as pd
 
+from engine.fgview.agentspec import AgentRegistry
 from engine.fgview.config import DEFAULT_CONFIG, FGConfig
 from engine.fgview.manager import TradeManager
 from engine.fgview.plan import Plan
@@ -71,11 +72,11 @@ class AgentResult:
 
     @property
     def icon(self) -> str:
-        return AGENT_META[self.agent][0]
+        return AGENT_META.get(self.agent, ("•", "#F2D27A", ""))[0]
 
     @property
     def color(self) -> str:
-        return AGENT_META[self.agent][1]
+        return AGENT_META.get(self.agent, ("•", "#F2D27A", ""))[1]
 
 
 @dataclass
@@ -143,7 +144,7 @@ class DeskDecision:
         hard = (self.edge_r is not None and self.edge_r < -0.02) or (self.probability or 0) < 50 or any(
             r.agent == "GATE" and r.status == "block" for r in self.results) or any(
             r.agent == "EDGE" and r.status == "block" and "⛔" in r.headline and "ventaja" not in r.headline.split("⛔")[-1]
-            for r in self.results)
+            for r in self.results) or bool(self.raw.get("hard_block"))
         return "NO OPERAR" if hard else "ESPERAR"
 
     @property
@@ -294,9 +295,32 @@ class Desk:
         self.learn = False  # 🧪 Papel de aprendizaje: en PAPEL abre lo más recomendado aunque la mesa no lo apruebe
         self.rotation = SignalRotation(services.filters)
         self.calibrator = Calibrator(services.time_machine, config)
+        self.agents = AgentRegistry()  # Fichas de los 12 y el lugar donde entra un agente nuevo
         from engine.fgview.flowfeed import FlowFeed
 
         self.flow = FlowFeed()  # Datos de Binance para WHALE/FLOW/FUNDING (None = desactivado)
+
+    def _extend(self, dec: DeskDecision, anchor: str, operable: bool) -> bool:
+        """Corre agentes registrados para sentarse después de `anchor`. True = hay que parar la cadena."""
+        stop = False
+        for extra in self.agents.extras_after(anchor):
+            spec = extra.spec
+            if spec.name not in AGENT_META:
+                AGENT_META[spec.name] = (spec.icon, spec.color, spec.question[:60])
+            try:
+                result = extra.evaluate(dec, self.s)
+            except Exception as exc:  # noqa: BLE001 - un agente nuevo no puede tumbar la mesa
+                result = AgentResult(spec.name, "info", f"n/a · {type(exc).__name__}")
+            if result is None:
+                continue
+            if result.agent != spec.name:
+                result = replace(result, agent=spec.name)
+            dec.results.append(result)
+            if result.status == "block":
+                stop = True
+                if spec.hard:
+                    dec.raw["hard_block"] = True
+        return bool(stop and not operable)
 
     @staticmethod
     def tape(snap, bars: int = 80) -> dict | None:
@@ -531,7 +555,7 @@ class Desk:
         dec.snap = snap  # La Trade Card del copiloto usa precio, velas y su antigüedad
         dec.raw.update(score=rep.score, wscore=wscore, book=(snap.order_book or {}).get("imbalance"),
                        z=self.vwap_z(snap.df5))
-        if res.status == "block" and not operable:
+        if self._extend(dec, "SPOTTER", operable) or (res.status == "block" and not operable):
             return dec
         coin = s.tiers.resolve(symbol)
         # --- WHALE · FLOW · FUNDING (datos de Binance) ---
@@ -543,7 +567,7 @@ class Desk:
                                   ("FUNDING", self.funding_agent(flow, snap.funding, rep.direction))):
             dec.results.append(res_a)
             votes[agent] = v
-            if res_a.status == "block" and not operable:
+            if self._extend(dec, agent, operable) or (res_a.status == "block" and not operable):
                 dec.raw["votes"] = votes
                 return dec
         dec.raw["votes"] = votes
@@ -552,8 +576,9 @@ class Desk:
         dec.raw["squeeze"] = sq.points
         if pos is not None:
             dec.raw["crowd"] = pos.short_pct if rep.direction == "SHORT" else pos.long_pct
-        dec.results.append(self.gate_agent(sq, rep.direction))
-        if dec.results[-1].status == "block" and not operable:
+        gate = self.gate_agent(sq, rep.direction)
+        dec.results.append(gate)
+        if self._extend(dec, "GATE", operable) or (gate.status == "block" and not operable):
             return dec
         # --- PRIOR ---
         t0 = time.perf_counter()
@@ -564,7 +589,7 @@ class Desk:
         dec.results.append(AgentResult("PRIOR", st_p, f"TP1 en {p_prior:.0f}% de {prior.samples} casos "
                                        f"{'parecidos' if prior.similar else 'del historial'} · SL primero {prior.sl_first:.0f}%",
                                        value=p_prior, ms=(time.perf_counter() - t0) * 1000))
-        if st_p == "block" and not operable:
+        if self._extend(dec, "PRIOR", operable) or (st_p == "block" and not operable):
             return dec
         # --- PRICER ---
         t0 = time.perf_counter()
@@ -583,7 +608,7 @@ class Desk:
         dec.results.append(AgentResult("PRICER", st_pr, f"P(TP1) {p_final:.1f}% (Time Machine {tm.p_tp1:.1f}% · base "
                                        f"{p_prior:.0f}%){cal_txt} · {tm.sims:,} caminos",
                                        value=p_final, ms=(time.perf_counter() - t0) * 1000))
-        if st_pr == "block" and not operable:
+        if self._extend(dec, "PRICER", operable) or (st_pr == "block" and not operable):
             return dec
         # --- EDGE ---
         t0 = time.perf_counter()
@@ -603,7 +628,7 @@ class Desk:
                 f" · ⛔ ventaja menor que el mínimo ({self.min_edge_r:+.2f}R)"
         st_e = "pass" if edge_ok and not guards else "block"
         dec.results.append(AgentResult("EDGE", st_e, head, value=tm.ev_r, ms=(time.perf_counter() - t0) * 1000))
-        if st_e == "block" and not operable:
+        if self._extend(dec, "EDGE", operable) or (st_e == "block" and not operable):
             return dec
         # --- KELLY ---
         t0 = time.perf_counter()
@@ -645,11 +670,13 @@ class Desk:
                if dec.raw.get("min_notional") else "")
             + (" · 🪜 escalera" if ladder_risk is not None else ""),
             value=risk, ms=(time.perf_counter() - t0) * 1000))
-        if st_k == "block":
+        if self._extend(dec, "KELLY", operable) or st_k == "block":
             return dec
         # --- GUARD (stop guard + escalera de TPs) ---
         g_res, g_opts = self.guard_agent(plan, snap)
         dec.results.append(g_res)
+        if self._extend(dec, "GUARD", operable):
+            return dec
         # --- TAKER ---
         t0 = time.perf_counter()
         ticket = s.executor.build_ticket(plan, symbol, market, exchange or "binance", "DESK", rep.score, post_only=True,
@@ -661,9 +688,11 @@ class Desk:
         dec.results.append(AgentResult("TAKER", "info" if objected else "pass", f"{plan.direction} {fmt_px(plan.entry)} post-only · SL "
                                        f"{fmt_px(plan.stop_loss)} · TP1 {fmt_px(plan.tps[0][0])} ({fmt_pct(plan.tps[0][1])}) "
                                        f"· {sent_txt}", ms=(time.perf_counter() - t0) * 1000))
+        self._extend(dec, "TAKER", operable)
         if send_mode in ("paper", "live"):
             self.send(dec, send_mode)
         dec.results.append(self.close_agent())
+        self._extend(dec, "CLOSER", operable)
         return dec
 
     def send(self, dec: DeskDecision, send_mode: str) -> bool:

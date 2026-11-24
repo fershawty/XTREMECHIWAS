@@ -72,9 +72,9 @@ class FGServices:
     burnout: BurnOutStrategy | None = None
     swing: SwingPlanner | None = None
     reviewer: HistoryReviewer | None = None
-    desk: object | None = None  # FG DESK (6 agentes)
+    desk: object | None = None  # FG DESK (12 agentes + registro de fichas)
     ladder_desk: object | None = None  # 🪜 Modo escalera de la mesa
-    grok: object | None = None  # 🤖 GROK DESK: puente MCP para los agentes de Grok
+    grok: object | None = None  # 🤖 GROK DESK: equipo Grok (votos, G-JUDGE, rondas) y puente MCP
     copilot: object | None = None  # 🧭 Copiloto: Trade Card, COACH, reglas y SCRIBE
     telegram: object | None = None  # 📲 Bot de Telegram del copiloto
     autopilot: object | None = None  # Piloto automático de la mesa
