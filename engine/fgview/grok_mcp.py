@@ -678,15 +678,21 @@ class GrokBridge:
                                              "razones, riesgos, movimiento_esperado_pct, horizonte_min).",
                     "nota": "El plan y las probabilidades son de FG VIEW: no inventes precios. Caduca en 20 min."}
 
-        @srv.tool(description="TU elección de la operación más rentable (la toma la página GROK PICK). ronda_id es el id "
-                              "de una candidata de fg_pick_datos. veredicto: APRUEBA, PRECAUCION o VETA. lo_esperado: qué "
-                              "esperas que pase, con números. No abre ninguna operación: el usuario decide.",
+        @srv.tool(description="TU elección de la operación más rentable, con TUS PRECIOS (la toma la página GROK PICK). "
+                              "ronda_id es el id de una candidata de fg_pick_datos. veredicto: APRUEBA, PRECAUCION o VETA. "
+                              "lo_esperado: qué esperas que pase, con números. Puedes mandar entrada, stop_loss y "
+                              "take_profits [{'precio': x, 'cierra': 50}]: FG VIEW los valida, calcula tamaño y "
+                              "apalancamiento con las reglas del usuario y vuelve a simular 100,000 caminos sobre tus "
+                              "precios (te devuelve la expectativa en 'con_tus_precios'). Si los rechaza, corrige y "
+                              "vuelve a llamar. Sin precios se usa el plan de la mesa. No abre ninguna operación.",
                   annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=False))
         def fg_pick_elige(ronda_id: int, veredicto: str, confianza: int, lo_esperado: str,
                           razones: list[str] | None = None, riesgos: list[str] | None = None,
-                          movimiento_esperado_pct: float | None = None, horizonte_min: int | None = None) -> dict:
+                          movimiento_esperado_pct: float | None = None, horizonte_min: int | None = None,
+                          entrada: float | None = None, stop_loss: float | None = None,
+                          take_profits: list[dict] | None = None) -> dict:
             out = self.pick.submit(ronda_id, veredicto, confianza, lo_esperado, razones, riesgos,
-                                   movimiento_esperado_pct, horizonte_min)
+                                   movimiento_esperado_pct, horizonte_min, entrada, stop_loss, take_profits)
             self._log("fg_pick_elige", {"ronda_id": ronda_id, "veredicto": veredicto},
                       out.get("elegida") or out.get("error") or "sin datos", ["TAKER"])
             return out

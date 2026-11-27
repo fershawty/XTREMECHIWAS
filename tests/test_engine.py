@@ -1291,3 +1291,33 @@ def test_grok_pick_via_mcp_grok_chooses(fgdb):
     assert pick.state()["history"][-1]["cripto"] == gp["cripto"]
     msg = pick.open_paper(rid)  # Grok aprobó: se puede abrir en papel aunque la mesa fuera más estricta
     assert "PAPEL" in msg.upper() or "rechazada" in msg or "Solo se abre" in msg
+
+
+def test_grok_pick_grok_sets_prices(fgdb):
+    """Grok pone entrada, SL y TPs por MCP; FG VIEW valida, dimensiona y vuelve a simular."""
+    fgdb.copilot.rules.change("cutoff", "23:59")
+    fgdb.copilot.rules.change("day_start", "00:00")
+    _desk_forced(fgdb)
+    pick = fgdb.grok.pick
+    brief = pick.brief(symbol="DEMO")
+    c = brief["candidatas"][0]
+    rid, px, k = c["id"], c["plan"]["entrada"], (1 if c["direccion"] == "LONG" else -1)
+    assert "PON TUS PRECIOS" in pick.pick_prompt(brief)
+    # Rechazos: stop al revés, sin stop, entrada lejos del precio
+    assert "lado equivocado" in pick.submit(rid, "APRUEBA", 70, "x", entrada=px, stop_loss=px * (1 + k * 0.01))["error"]
+    assert "stop_loss" in pick.submit(rid, "APRUEBA", 70, "x", entrada=px)["error"]
+    lejos = px * 1.2
+    assert "3%" in pick.submit(rid, "APRUEBA", 70, "x", entrada=lejos, stop_loss=lejos * (1 - k * 0.012))["error"]
+    out = pick.submit(rid, "APRUEBA", 80, "Espero TP1", entrada=px, stop_loss=px * (1 - k * 0.012),
+                      take_profits=[{"precio": px * (1 + k * 0.015), "cierra": 60},
+                                    {"precio": px * (1 + k * 0.03), "cierra": 40}])
+    assert out["ok"] and out["con_tus_precios"]["rr_neto"] > 0
+    esp = out["con_tus_precios"]["esperado_con_tus_precios"]
+    assert esp["sims"] == 100_000 and esp["prob_tp1"] is not None  # simulado sobre SUS precios
+    gp = pick.state()["grok"]
+    assert gp["precios_de"] == "GROK" and gp["plan_grok"]["plan"]["sl"] == pytest.approx(px * (1 - k * 0.012), rel=1e-6)
+    assert gp["plan_grok"]["plan"]["riesgo_usd"] <= 1000 * 0.01 + 1e-6  # el tamaño sigue siendo de FG VIEW
+    assert "Abierta en PAPEL" in pick.open_paper(rid)
+    pos = fgdb.positions.all()[-1]
+    assert pos["strategy"] == "GROK PICK" and pos["mode"] == "papel"
+    assert pos["stop_loss"] == pytest.approx(gp["plan_grok"]["plan"]["sl"], rel=1e-6)

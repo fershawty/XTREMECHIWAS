@@ -249,6 +249,13 @@ jobs:
           - **Windows**: `FGView-V2-Windows.zip` → descomprime y abre `FGView\FGView.exe`
           - **Mac Intel (macOS 12 Monterey o superior)**: `FGView-V2-macOS-Intel.dmg` → arrastra a Aplicaciones; la primera vez Control + clic → Abrir
 
+          **Novedades v5.7 · Grok pone sus propios precios en el PICK**
+          - En GROK PICK modo 🤖 Elige Grok, ahora Grok manda **entrada, stop loss y take profits** junto con su elección (`fg_pick_elige`). Es su pick de verdad, no solo escoger entre las opciones de la mesa.
+          - FG VIEW valida esos precios antes de aceptarlos: stop del lado correcto, ni pegado (<0.15%) ni absurdo (>10%), TPs del lado correcto, R:R neto positivo, liquidación lejos del stop y entrada a menos de 3% del precio actual. Si algo falla, se le devuelve el motivo para que corrija.
+          - El **tamaño, el apalancamiento y las comisiones los sigue poniendo FG VIEW** con tus reglas: Grok nunca decide cuánto arriesgas.
+          - Se vuelven a correr las **100,000 simulaciones sobre los precios de Grok** para decir qué se espera de verdad (P(TP1), P(SL), ganancia esperada, R:R), y eso es lo que muestra la página.
+          - Abrir en papel usa los precios de Grok, con SL obligatorio.
+
           **Novedades v5.6 · GROK PICK elegido por Grok vía MCP**
           - GROK PICK ahora tiene dos modos. 🤖 **Elige Grok (MCP)**: FG VIEW corre la mesa de 12 agentes en varias criptos, deja las candidatas con todos sus números y Grok, desde grok.com con sus agentes, elige una y dice **qué espera** (movimiento esperado, horizonte, razones y riesgos). La página espera y se actualiza sola en cuanto Grok elige. 🖥️ **Elige la mesa (local)**: como antes, sin internet.
           - Dos herramientas MCP nuevas: `fg_pick_datos` (candidatas con sus números) y `fg_pick_elige` (la elección de Grok). Mensaje listo para copiar y pegar en el chat.

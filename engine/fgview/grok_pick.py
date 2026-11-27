@@ -8,8 +8,11 @@ Dos modos:
   elige una con `fg_pick_elige` y dice qué espera. La página muestra lo que dijo Grok.
 * 🖥️ ELIGE LA MESA (local): los 6 votantes G-* en código votan y G-JUDGE decide, sin internet ni Grok.
 
-En los dos casos el PLAN (entrada, SL, TPs, apalancamiento, riesgo) y las probabilidades salen de FG VIEW y de las
-100,000 simulaciones; Grok NUNCA pone precios. Se ordena por veredicto → ganancia esperada neta → P(TP1).
+Grok SÍ puede poner sus propios precios (entrada, stop y take profits) en su elección. FG VIEW entonces:
+  1. los valida (stop del lado correcto, ni pegado ni absurdo, TPs del lado correcto, R:R positivo, liquidación lejos);
+  2. calcula el TAMAÑO, el apalancamiento y las comisiones con TUS reglas (Grok nunca decide cuánto arriesgas);
+  3. vuelve a correr las 100,000 simulaciones SOBRE LOS PRECIOS DE GROK para decir qué se espera de verdad.
+Si no manda precios, se usa el plan de la mesa. Se ordena por veredicto → ganancia esperada neta → P(TP1).
 Qué nunca hace: abrir nada por su cuenta (abrir en papel es un botón aparte, con las reglas de siempre), prometer
 ganancias o inventar datos. "Más rentable" = mayor ganancia esperada según los datos, no una garantía.
 """
@@ -40,6 +43,7 @@ class GrokPick:
         self.last: dict | None = None
         self._ctx: dict[int, object] = {}  # id de ronda -> contexto (para abrir en papel después)
         self._mem: dict = {}
+        self._gplans: dict[int, object] = {}  # Planes con precios de Grok, listos para abrir en papel
 
     # ------------------------------------------------------------- estado compartido (página ↔ MCP)
     @property
@@ -156,9 +160,41 @@ class GrokPick:
         at = datetime.fromisoformat(b["at"])
         return None if datetime.now(timezone.utc) - at > timedelta(minutes=PICK_TTL_MIN) else b
 
+    def _grok_plan(self, rid: int, entrada, sl, tps) -> tuple[dict | None, str | None]:
+        """Arma y valida el plan con los PRECIOS de Grok, y le calcula su propia expectativa (Time Machine)."""
+        ctx = self._ctx.get(rid)
+        if ctx is None:
+            return None, "La ronda ya no está en memoria: pide fg_pick_datos otra vez."
+        snap = getattr(ctx.decision, "snap", None)
+        try:
+            plan = self.s.planner.from_levels(
+                self.team._capital(), ctx.symbol, ctx.direction, float(entrada),
+                float(sl), [(float(t.get("precio")), float(t.get("cierra", 0) or 0)) for t in (tps or [])],
+                atr5=getattr(snap, "atr5", None))
+        except (ValueError, TypeError, KeyError, AttributeError) as exc:
+            return None, f"Precios rechazados: {exc}"
+        price = getattr(snap, "price", None)
+        if price and abs(plan.entry - price) / price > 0.03:
+            return None, (f"La entrada {plan.entry:g} está a más del 3% del precio actual ({price:g}): "
+                          "no es una entrada de 15-30 min.")
+        exp = {}
+        try:
+            df, bm = self.s.desk._history(ctx.symbol, ctx.market, None)
+            tm = self.s.time_machine.run(plan, df, bm)
+            exp = {"prob_tp1": _f(tm.p_tp1, 1), "p_sl": _f(tm.p_sl, 1), "ev_usd": _f(tm.ev, 2),
+                   "ventaja_r": _f(tm.ev_r, 3), "sims": tm.sims}
+        except Exception as exc:  # noqa: BLE001 - sin historial no se inventa una probabilidad
+            exp = {"error": f"no se pudo simular: {str(exc)[:90]}"}
+        return {"plan": {"entrada": _f(plan.entry, 6), "sl": _f(plan.stop_loss, 6), "sl_pct": _f(plan.sl_pct, 3),
+                         "tps": [{"precio": _f(px, 6), "pct": _f(pct, 3), "cierra": _f(cl, 1)} for px, pct, cl in plan.tps],
+                         "apalancamiento": plan.leverage, "margen": _f(plan.margin, 2), "riesgo_usd": _f(plan.risk_usd, 2),
+                         "liquidacion": _f(plan.liquidation, 6), "nocional": _f(plan.notional, 2),
+                         "rr_neto": _f(plan.rr_net, 2)},
+                "esperado": exp, "notas": plan.notes, "_plan": plan}, None
+
     def submit(self, ronda_id, veredicto: str, confianza: int, lo_esperado: str, razones=None, riesgos=None,
-               movimiento_esperado_pct=None, horizonte_min=None) -> dict:
-        """Grok elige (por MCP). El plan y las probabilidades son de FG VIEW; de Grok solo el juicio y lo que espera."""
+               movimiento_esperado_pct=None, horizonte_min=None, entrada=None, stop_loss=None, take_profits=None) -> dict:
+        """Grok elige (por MCP) y puede poner sus propios precios; FG VIEW los valida y dimensiona."""
         v = (veredicto or "").upper().replace("Ó", "O").strip()
         if v not in ("APRUEBA", "PRECAUCION", "VETA"):
             return {"error": "veredicto debe ser APRUEBA, PRECAUCION o VETA"}
@@ -176,17 +212,30 @@ class GrokPick:
         if cand is None:
             return {"error": f"La ronda {rid} no está entre las candidatas: {[c['id'] for c in b['candidatas']]}"}
         full = next((r for r in (self.last or {}).get("ranking", []) if r["id"] == rid), None)
+        gplan = None
+        if entrada is not None or stop_loss is not None or take_profits:
+            if entrada is None or stop_loss is None:
+                return {"error": "Si pones precios, manda al menos entrada y stop_loss (sin SL no hay operación)."}
+            gplan, err = self._grok_plan(rid, entrada, stop_loss, take_profits)
+            if err:
+                return {"error": err, "pista": "Corrige los precios y vuelve a llamar fg_pick_elige."}
+            self._gplans[rid] = gplan.pop("_plan")
         pick = {"at": datetime.now(timezone.utc).isoformat(), "ronda_id": rid, "cripto": cand["cripto"],
                 "simbolo": cand["simbolo"], "direccion": cand["direccion"], "veredicto": v,
                 "confianza": max(0, min(100, int(confianza or 0))), "lo_esperado": str(lo_esperado or "")[:600],
                 "razones": [str(x)[:200] for x in (razones or [])][:6], "riesgos": [str(x)[:200] for x in (riesgos or [])][:6],
                 "movimiento_esperado_pct": _f(movimiento_esperado_pct, 3), "horizonte_min": _f(horizonte_min, 0),
-                "mesa": cand["mesa"], "pausado": b.get("pausado"), "datos": full or cand, "quien": "GROK"}
+                "mesa": cand["mesa"], "pausado": b.get("pausado"), "datos": full or cand, "quien": "GROK",
+                "plan_grok": gplan, "precios_de": "GROK" if gplan else "FG VIEW (mesa)"}
         st["grok"] = pick
         st["history"] = st.get("history", []) + [{k: pick[k] for k in ("at", "cripto", "direccion", "veredicto", "confianza", "lo_esperado")}]
         self.save(st)
-        return {"ok": True, "elegida": f"{v} {pick['direccion']} {pick['cripto']} (ronda {rid})",
-                "nota": "Queda en la página GROK PICK. No se abrió nada: el usuario decide.", "modo": "solo análisis"}
+        out = {"ok": True, "elegida": f"{v} {pick['direccion']} {pick['cripto']} (ronda {rid})",
+               "nota": "Queda en la página GROK PICK. No se abrió nada: el usuario decide.", "modo": "solo análisis"}
+        if gplan:
+            out["con_tus_precios"] = {**gplan["plan"], "esperado_con_tus_precios": gplan["esperado"],
+                                      "notas": gplan["notas"]}
+        return out
 
     def open_paper(self, ronda_id) -> str:
         """Abre en PAPEL la operación elegida (solo si G-JUDGE aprobó y la mesa no dijo NO OPERAR)."""
@@ -199,6 +248,16 @@ class GrokPick:
             gp is not None and gp["ronda_id"] == ronda_id and gp["veredicto"] == "APRUEBA")
         if not approved:
             return "Solo se abre en papel lo que aprobó quien eligió (Grok o G-JUDGE)."
+        gplan = self._gplans.get(ronda_id)
+        if gplan is not None:  # Con los precios de Grok: ticket propio, SL obligatorio, solo papel
+            ticket = self.s.executor.build_ticket(gplan, ctx.symbol, ctx.market, "binance", "GROK PICK",
+                                                  post_only=True)
+            problem = ticket.stop_problem()
+            if problem:
+                return f"No se abre: {problem}"
+            res = self.s.executor.submit(ticket, confirmed=True, mode="paper")
+            return ("Abierta en PAPEL con los precios de Grok." if res.get("status") == "filled"
+                    else f"No se abrió: {(res.get('problems') or [res.get('message', 'sin motivo')])[0]}")
         msg, _pos = self.team._open_paper(ctx.decision, (ctx.plan or {}).get("size_factor", 1.0))
         return msg
 
@@ -228,6 +287,11 @@ class GrokPick:
             "ahora (mayor ganancia esperada neta, no la más emocionante).\n"
             "3) Manda tu elección con fg_pick_elige: ronda_id de la elegida, veredicto (APRUEBA / PRECAUCION / VETA), "
             "confianza 0-100, lo_esperado (qué esperas que pase, en una o dos frases, con números), razones, riesgos, "
-            "y si puedes movimiento_esperado_pct y horizonte_min.\n"
-            "No inventes precios: el plan (entrada, SL, TPs) lo pone FG VIEW. No abras nada. "
+            "movimiento_esperado_pct y horizonte_min.\n"
+            "4) PON TUS PRECIOS: manda también entrada, stop_loss y take_profits "
+            "[{\"precio\": x, \"cierra\": 50}, ...] basados en los niveles reales que ves en los datos (soportes, "
+            "resistencias, VWAP, ATR). FG VIEW los valida (stop del lado correcto, ni pegado ni absurdo, liquidación "
+            "lejos), calcula el tamaño y el apalancamiento con las reglas del usuario, y vuelve a correr las 100,000 "
+            "simulaciones sobre TUS precios para decir qué se espera. Si te los rechaza, corrige y vuelve a mandar. "
+            "Si no pones precios, se usa el plan de la mesa. No abras nada. "
             "Después dime en el chat tu reporte con el formato de siempre.")

@@ -192,6 +192,79 @@ class PositionPlanner:
             trailing=cfg.atr_trail_mult * atr5 if atr5 and atr5 > 0 else None, options=options, notes=notes,
         )
 
+    # ------------------------------------------------- plan con precios de fuera (GROK PICK)
+    def from_levels(self, capital: float, symbol: str, direction: str, entry: float, stop: float,
+                    tps: list[tuple[float, float]] | None = None, atr5: float | None = None,
+                    lev_cap: int | None = None, risk_pct: float | None = None) -> Plan:
+        """
+        Plan con los PRECIOS que pone otro (p. ej. Grok en GROK PICK): entrada, stop y take profits.
+        El TAMAÑO, el apalancamiento y las comisiones los sigue poniendo FG VIEW con TUS reglas, y la
+        liquidación sigue quedando >= liq_safety veces más lejos que el stop. `tps`: [(precio, % que cierra)].
+        Lanza ValueError si los precios no son operables.
+        """
+        if capital <= 0 or entry <= 0 or direction not in ("LONG", "SHORT"):
+            raise ValueError("Capital, entrada y dirección (LONG/SHORT) son obligatorios.")
+        cfg, d = self.cfg, (1 if direction == "LONG" else -1)
+        if stop is None or stop <= 0:
+            raise ValueError("Falta el stop loss: sin SL no hay operación.")
+        if d * (entry - stop) <= 0:
+            raise ValueError(f"El stop {stop:g} está del lado equivocado para un {direction} con entrada {entry:g}.")
+        sl_frac = abs(entry - stop) / entry
+        if sl_frac < 0.0015:
+            raise ValueError(f"El stop está demasiado pegado ({sl_frac * 100:.2f}%): lo barre el ruido normal.")
+        if sl_frac > 0.10:
+            raise ValueError(f"El stop está demasiado lejos ({sl_frac * 100:.2f}%): más del 10% no cabe en estas reglas.")
+        tier, listed = self.tiers.for_coin(symbol)
+        coin = self.tiers.resolve(symbol)
+        table_risk, max_margin_pct = self.budget.rule(capital)
+        risk_pct = table_risk if risk_pct is None else max(0.05, min(table_risk, float(risk_pct)))
+        notes = [f"Precios puestos por GROK; tamaño, apalancamiento y comisiones los calcula FG VIEW con tus reglas."]
+        if not listed:
+            notes.append(f"{coin} no está en los niveles A/B/C: se trata como Nivel {tier.key} (máxima prudencia).")
+        raw = [(float(px), float(part)) for px, part in (tps or []) if px and part]
+        if not raw:
+            raw = [(entry * (1 + d * pct / 100.0), part) for pct, part in zip(tier.tp, cfg.tp_split)]
+            notes.append("Grok no dio take profits: se usan los del nivel.")
+        for px, _part in raw:
+            if d * (px - entry) <= 0:
+                raise ValueError(f"El take profit {px:g} está del lado equivocado para un {direction}.")
+        total = sum(part for _px, part in raw)
+        if total <= 0:
+            raise ValueError("Los take profits tienen que cerrar algo de la posición.")
+        raw = sorted(((px, part / total * 100.0) for px, part in raw), key=lambda q: d * q[0])
+        plan_tps = [(px, abs(px - entry) / entry * 100.0, part) for px, part in raw]
+        notional = capital * risk_pct / 100.0 / sl_frac
+        max_margin = capital * max_margin_pct / 100.0
+        lev_hi = min(tier.lev_max, self.max_safe_leverage(sl_frac), lev_cap or tier.lev_max)
+        lev = int(min(max(math.ceil(notional / max_margin) if max_margin > 0 else lev_hi, min(tier.lev_min, lev_hi)), lev_hi))
+        if notional / lev > max_margin + 1e-9:
+            new_notional = max_margin * lev
+            notes.append(f"La posición se recorta de {fmt_usd(notional)} a {fmt_usd(new_notional)} para respetar el "
+                         f"margen máximo ({max_margin_pct:g}%).")
+            notional = new_notional
+        margin, fees = notional / lev, notional * cfg.fee * 2
+        tp_pnl = [notional * (close / 100.0) * (pct / 100.0) - fees * close / 100.0 for _, pct, close in plan_tps]
+        sl_pnl = -notional * sl_frac - fees
+        rr_weighted = sum(pct * close / 100.0 for _, pct, close in plan_tps) / (sl_frac * 100.0)
+        rr_net = sum(tp_pnl) / abs(sl_pnl) if sl_pnl < 0 else float("inf")
+        if rr_net <= 0:
+            raise ValueError("Con esos precios la operación pierde dinero en promedio aun acertando todos los TPs.")
+        liq = self.liquidation(direction, entry, lev)
+        if abs(entry - liq) / entry < cfg.liq_safety * sl_frac - 1e-9:
+            raise ValueError("Con esos precios la liquidación queda demasiado cerca del stop.")
+        options = [LeverageOption(leverage=lev, margin=margin, roi_tp1=(notional * plan_tps[0][1] / 100 - fees) / margin * 100,
+                                  roi_tp3=(notional * plan_tps[-1][1] / 100 - fees) / margin * 100,
+                                  roi_sl=sl_pnl / margin * 100, liquidation=liq, liq_ok=True,
+                                  margin_ok=margin <= max_margin + 1e-9, recommended=True)]
+        return Plan(
+            coin=coin, direction=direction, capital=capital, entry=entry, tier=tier, listed=listed,
+            risk_pct=risk_pct, risk_usd=notional * sl_frac, max_margin_pct=max_margin_pct, sl_pct=sl_frac * 100,
+            sl_source="GROK", stop_loss=stop, tps=plan_tps, leverage=lev, margin=margin, notional=notional,
+            coins_qty=notional / entry, liquidation=liq, fees=fees, tp_pnl=tp_pnl, sl_pnl=sl_pnl,
+            rr_weighted=rr_weighted, rr_net=rr_net, breakeven_wr=1 / (1 + rr_net) * 100 if rr_net > 0 else 100.0,
+            break_even=entry * (1 + d * 2 * cfg.fee),
+            trailing=cfg.atr_trail_mult * atr5 if atr5 and atr5 > 0 else None, options=options, notes=notes)
+
     # ------------------------------------------------------------------ tabla
     @staticmethod
     def options_table(plan: Plan) -> pd.DataFrame:

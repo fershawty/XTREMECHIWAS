@@ -25,6 +25,10 @@ def _px(v) -> str:
 
 
 def _hero(b: dict, who: str = "MESA", grok: dict | None = None) -> str:
+    gp = (grok or {}).get("plan_grok")
+    if gp:  # Grok puso sus precios: el plan y la expectativa son los suyos (ya validados y simulados por FG VIEW)
+        b = {**b, "plan": gp["plan"], **{k: gp["esperado"].get(k, b.get(k)) for k in ("prob_tp1", "p_sl", "ev_usd", "ventaja_r")},
+             "riesgo_pct": b.get("riesgo_pct")}
     vj = (grok or {}).get("veredicto") or b["veredicto"]
     vc = VC.get(vj, "#8C95A8")
     dc = "#3DDC97" if b["direccion"] == "LONG" else "#FF4D6D"
@@ -34,9 +38,11 @@ def _hero(b: dict, who: str = "MESA", grok: dict | None = None) -> str:
         f'<div class="v"><i>{VOTER_NAMES.get(k, k)}</i><b style="color:{"#3DDC97" if (b["votos"].get(k) or {}).get("voto", 0) > 0 else "#FF4D6D" if (b["votos"].get(k) or {}).get("voto", 0) < 0 else "#8C95A8"}">'
         f'{(b["votos"].get(k) or {}).get("voto", 0):+d}</b><s>{escape(str((b["votos"].get(k) or {}).get("linea", "n/a")))[:70]}</s></div>'
         for k in VOTER_NAMES)
-    cells = [("ENTRADA", _px(p.get("entrada")), "#E6E9EF"), ("STOP LOSS", f'{_px(p.get("sl"))} (−{p.get("sl_pct") or 0:.2f}%)', "#FF4D6D")]
+    pre = "🤖 " if (grok or {}).get("plan_grok") else ""
+    cells = [(f"{pre}ENTRADA", _px(p.get("entrada")), "#E6E9EF"),
+             (f"{pre}STOP LOSS", f'{_px(p.get("sl"))} (−{p.get("sl_pct") or 0:.2f}%)', "#FF4D6D")]
     for i, tp in enumerate(tps[:3]):
-        cells.append((f"TP{i + 1} · cierra {tp.get('cierra')}%", f'{_px(tp.get("precio"))} (+{tp.get("pct") or 0:.2f}%)', "#3DDC97"))
+        cells.append((f"{pre}TP{i + 1} · cierra {tp.get('cierra')}%", f'{_px(tp.get("precio"))} (+{tp.get("pct") or 0:.2f}%)', "#3DDC97"))
     cells += [("APALANCAMIENTO", f'{p.get("apalancamiento", "n/a")}x', "#F2D27A"), ("MARGEN", f'${p.get("margen") or 0:,.2f}', "#E6E9EF"),
               ("RIESGO SI TOCA SL", f'${p.get("riesgo_usd") or 0:,.2f} ({b.get("riesgo_pct") or 0:.2f}%)', "#FF8A3D"),
               ("LIQUIDACIÓN", _px(p.get("liquidacion")), "#8C95A8")]
@@ -66,7 +72,7 @@ def _hero(b: dict, who: str = "MESA", grok: dict | None = None) -> str:
 <div class="gp">
  <div class="hd"><div><div class="t">🏆 LA OPERACIÓN MÁS RENTABLE AHORA · ELIGIÓ {escape(who)} · {escape(b["fuente"])}</div>
   <div class="big">{escape(b["cripto"])} <span class="pill" style="background:{dc}22;color:{dc}">{escape(str(b["direccion"]))}</span></div></div>
-  <div style="text-align:right"><div class="t">{"GROK (MCP)" if grok else "G-JUDGE"}</div>
+  <div style="text-align:right"><div class="t">{("GROK (MCP) · PRECIOS DE GROK" if (grok or {}).get("plan_grok") else "GROK (MCP)") if grok else "G-JUDGE"}</div>
   <span class="pill" style="background:{vc}22;color:{vc};font-size:16px">{escape(vj)}{"" if grok else f" · Σ {b['suma']:+d}"}</span>
   <div class="t" style="margin-top:4px">confianza {(grok or b)["confianza"]}% · mesa: {escape(str(b["mesa"]))}</div></div></div>
  <div class="ks">{kp}</div>
@@ -216,6 +222,18 @@ def _de_grok(pick, br, gp: dict) -> None:
         _plan_card(d, "GROK (MCP)", gp)
     else:
         st.info(f"{gp['veredicto']} {gp['direccion']} {gp['cripto']} · sin plan guardado para esa ronda.")
+    gpl = gp.get("plan_grok")
+    if gpl:
+        e = gpl.get("esperado") or {}
+        if e.get("error"):
+            st.warning(f"Los precios de Grok se validaron, pero no se pudieron simular: {e['error']}")
+        else:
+            st.success(f"✅ Precios puestos por Grok y validados por FG VIEW · simulados de nuevo "
+                       f"({e.get('sims', 0):,} caminos sobre SUS niveles) · R:R neto 1:{gpl['plan'].get('rr_neto')}")
+        for n in gpl.get("notas", [])[:3]:
+            st.caption(f"• {n}")
+    else:
+        st.caption("Grok no puso precios: el plan es el de la mesa.")
     st.markdown("#### 🔮 Lo que espera Grok")
     st.write(gp.get("lo_esperado") or "n/a")
     k = st.columns(3)
