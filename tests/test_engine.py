@@ -1267,3 +1267,27 @@ def test_grok_pick_finds_best_and_only_paper(fgdb):
         assert "Solo se abre" in msg
     assert "fg_tarjeta" in pick.grok_prompt(b) and "grok_veredicto" in pick.grok_prompt(b)
     assert pick.open_paper(999999).startswith("Primero")
+
+
+def test_grok_pick_via_mcp_grok_chooses(fgdb):
+    """Modo 🤖 ELIGE GROK: FG VIEW prepara, Grok elige por MCP, el plan sigue siendo de FG VIEW."""
+    fgdb.copilot.rules.change("cutoff", "23:59")
+    fgdb.copilot.rules.change("day_start", "00:00")
+    _desk_forced(fgdb)
+    pick = fgdb.grok.pick
+    brief = pick.brief(symbol="DEMO", both_sides=True)
+    assert len(brief["candidatas"]) == 2 and pick.waiting() is not None
+    assert all(c["plan"] and c["id"] for c in brief["candidatas"])
+    assert "fg_pick_elige" in pick.pick_prompt(brief)
+    assert pick.submit(999999, "APRUEBA", 70, "x")["error"].startswith("La ronda")
+    assert "veredicto debe ser" in pick.submit(brief["candidatas"][0]["id"], "COMPRA", 70, "x")["error"]
+    rid = brief["candidatas"][1]["id"]  # Grok elige la segunda, no la que sugirió la mesa
+    out = pick.submit(rid, "APRUEBA", 82, "Espero que llegue a TP1 en ~25 min", ["flujo a favor"], ["squeeze"],
+                      movimiento_esperado_pct=1.2, horizonte_min=25)
+    assert out["ok"] and pick.waiting() is None
+    gp = pick.state()["grok"]
+    assert gp["ronda_id"] == rid and gp["quien"] == "GROK" and gp["confianza"] == 82
+    assert gp["datos"]["plan"]["entrada"] and gp["movimiento_esperado_pct"] == 1.2
+    assert pick.state()["history"][-1]["cripto"] == gp["cripto"]
+    msg = pick.open_paper(rid)  # Grok aprobó: se puede abrir en papel aunque la mesa fuera más estricta
+    assert "PAPEL" in msg.upper() or "rechazada" in msg or "Solo se abre" in msg

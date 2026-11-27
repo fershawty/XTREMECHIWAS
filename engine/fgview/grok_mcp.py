@@ -664,6 +664,33 @@ class GrokBridge:
                     for r in out["ranking"]]
             return {"mejor": best, "ranking": slim, "nota": out["nota"], "modo": "solo análisis (no abre)"}
 
+        @srv.tool(description="Candidatas para que TÚ elijas la operación más rentable: FG VIEW corre la mesa de 12 "
+                              "agentes en varias criptos y te da sus números (P(TP1), ventaja, ganancia esperada, P(SL), "
+                              "plan con entrada/SL/TPs, votos de la mesa). Luego manda tu elección con fg_pick_elige. "
+                              "top = cuántas criptos (1-8); ambos_lados = probar LONG y SHORT; simbolo = una en concreto.",
+                  annotations=ro)
+        def fg_pick_datos(top: int = 5, ambos_lados: bool = False, simbolo: str = "") -> dict:
+            out = self.pick.brief(max(1, min(8, int(top or 5))), bool(ambos_lados), str(simbolo or "").strip())
+            self._log("fg_pick_datos", {"top": top, "ambos_lados": ambos_lados, "simbolo": simbolo},
+                      f"{len(out['candidatas'])} candidatas para que elija Grok",
+                      ["SPOTTER", "WHALE", "FLOW", "FUNDING", "GATE", "PRIOR", "PRICER", "EDGE", "KELLY"])
+            return {**out, "siguiente_paso": "Elige una con fg_pick_elige(ronda_id, veredicto, confianza, lo_esperado, "
+                                             "razones, riesgos, movimiento_esperado_pct, horizonte_min).",
+                    "nota": "El plan y las probabilidades son de FG VIEW: no inventes precios. Caduca en 20 min."}
+
+        @srv.tool(description="TU elección de la operación más rentable (la toma la página GROK PICK). ronda_id es el id "
+                              "de una candidata de fg_pick_datos. veredicto: APRUEBA, PRECAUCION o VETA. lo_esperado: qué "
+                              "esperas que pase, con números. No abre ninguna operación: el usuario decide.",
+                  annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=False))
+        def fg_pick_elige(ronda_id: int, veredicto: str, confianza: int, lo_esperado: str,
+                          razones: list[str] | None = None, riesgos: list[str] | None = None,
+                          movimiento_esperado_pct: float | None = None, horizonte_min: int | None = None) -> dict:
+            out = self.pick.submit(ronda_id, veredicto, confianza, lo_esperado, razones, riesgos,
+                                   movimiento_esperado_pct, horizonte_min)
+            self._log("fg_pick_elige", {"ronda_id": ronda_id, "veredicto": veredicto},
+                      out.get("elegida") or out.get("error") or "sin datos", ["TAKER"])
+            return out
+
         return srv
 
     def app(self):

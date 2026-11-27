@@ -25,7 +25,7 @@ from dotenv import load_dotenv
 
 # --- Marca / versión (cámbialo aquí y se actualiza en la app y el .exe) -------
 APP_NAME = "FG VIEW"
-APP_VERSION = "5.5.0"
+APP_VERSION = "5.6.0"
 BUILD_TAG = "V2 · BY GUS X FER X ALFREDOBONUS"
 APP_TITLE = f"{APP_NAME} {BUILD_TAG.split(' · ')[0]}"  # "FG VIEW V2"
 APP_CREDITS = "BY GUS X FER X ALFREDOBONUS"

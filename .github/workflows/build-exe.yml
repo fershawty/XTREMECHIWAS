@@ -249,6 +249,12 @@ jobs:
           - **Windows**: `FGView-V2-Windows.zip` → descomprime y abre `FGView\FGView.exe`
           - **Mac Intel (macOS 12 Monterey o superior)**: `FGView-V2-macOS-Intel.dmg` → arrastra a Aplicaciones; la primera vez Control + clic → Abrir
 
+          **Novedades v5.6 · GROK PICK elegido por Grok vía MCP**
+          - GROK PICK ahora tiene dos modos. 🤖 **Elige Grok (MCP)**: FG VIEW corre la mesa de 12 agentes en varias criptos, deja las candidatas con todos sus números y Grok, desde grok.com con sus agentes, elige una y dice **qué espera** (movimiento esperado, horizonte, razones y riesgos). La página espera y se actualiza sola en cuanto Grok elige. 🖥️ **Elige la mesa (local)**: como antes, sin internet.
+          - Dos herramientas MCP nuevas: `fg_pick_datos` (candidatas con sus números) y `fg_pick_elige` (la elección de Grok). Mensaje listo para copiar y pegar en el chat.
+          - Grok nunca pone precios: el plan (entrada, SL, TPs, apalancamiento, riesgo) y las probabilidades siempre salen de FG VIEW y de las 100,000 simulaciones; lo de Grok se muestra aparte como su opinión.
+          - Las candidatas caducan a los 20 min, se guarda el historial de elecciones y abrir en papel sigue siendo un botón opcional.
+
           **Novedades v5.5 · 🏆 GROK PICK: la operación más rentable a pedido**
           - Nuevo apartado GROK PICK (menú Operar): pulsas un botón y el equipo de agentes de Grok revisa las mejores criptos, la mesa de 12 agentes corre cada una, los 6 votantes G-* votan y G-JUDGE decide. Te muestra la de mayor ganancia esperada entre las aprobadas, con su plan completo (entrada, SL, TP1-3, apalancamiento, margen, riesgo, liquidación), P(TP1), ventaja, P(SL) y los votos.
           - No es automático: tú decides. Abrir en papel es un botón opcional (solo si G-JUDGE aprobó y la mesa no dijo NO OPERAR).

@@ -24,8 +24,9 @@ def _px(v) -> str:
     return f"{v:,.6g}" if abs(v) < 1000 else f"{v:,.2f}"
 
 
-def _hero(b: dict) -> str:
-    vc = VC.get(b["veredicto"], "#8C95A8")
+def _hero(b: dict, who: str = "MESA", grok: dict | None = None) -> str:
+    vj = (grok or {}).get("veredicto") or b["veredicto"]
+    vc = VC.get(vj, "#8C95A8")
     dc = "#3DDC97" if b["direccion"] == "LONG" else "#FF4D6D"
     p = b.get("plan") or {}
     tps = p.get("tps") or []
@@ -63,14 +64,15 @@ def _hero(b: dict) -> str:
 @media (max-width:900px){{.gp .ks,.gp .grid{{grid-template-columns:repeat(2,1fr)}} .gp .vs{{grid-template-columns:repeat(3,1fr)}}}}
 </style>
 <div class="gp">
- <div class="hd"><div><div class="t">🏆 LA OPERACIÓN MÁS RENTABLE AHORA · EQUIPO GROK · {escape(b["fuente"])}</div>
+ <div class="hd"><div><div class="t">🏆 LA OPERACIÓN MÁS RENTABLE AHORA · ELIGIÓ {escape(who)} · {escape(b["fuente"])}</div>
   <div class="big">{escape(b["cripto"])} <span class="pill" style="background:{dc}22;color:{dc}">{escape(str(b["direccion"]))}</span></div></div>
-  <div style="text-align:right"><div class="t">G-JUDGE</div><span class="pill" style="background:{vc}22;color:{vc};font-size:16px">{escape(b["veredicto"])} · Σ {b["suma"]:+d}</span>
-  <div class="t" style="margin-top:4px">confianza {b["confianza"]}% · mesa: {escape(str(b["mesa"]))}</div></div></div>
+  <div style="text-align:right"><div class="t">{"GROK (MCP)" if grok else "G-JUDGE"}</div>
+  <span class="pill" style="background:{vc}22;color:{vc};font-size:16px">{escape(vj)}{"" if grok else f" · Σ {b['suma']:+d}"}</span>
+  <div class="t" style="margin-top:4px">confianza {(grok or b)["confianza"]}% · mesa: {escape(str(b["mesa"]))}</div></div></div>
  <div class="ks">{kp}</div>
  <div class="grid">{grid}</div>
  <div class="vs">{votes}</div>
- <div class="why"><b style="color:{vc}">Por qué:</b> {escape(str(b["razon"]))}</div>
+ <div class="why"><b style="color:{vc}">Por qué:</b> {escape(str((grok or {}).get("lo_esperado") or b["razon"]))}</div>
 </div>"""
 
 
@@ -80,23 +82,42 @@ def render_grok_pick(svc, req) -> None:
         st.error("GROK PICK no está disponible en esta instalación.")
         return
     pick = br.pick
-    guide("Pulsa el botón y el equipo de agentes de Grok busca la operación más rentable ahora: revisa las mejores "
-          "criptos, la mesa de 12 agentes corre cada una, los 6 votantes G-* votan de −2 a +2 y G-JUDGE decide. Se "
-          "elige la de mayor ganancia esperada entre las aprobadas. No es automático: tú decides.",
-          ["Elige cuántas criptos revisar (o una en particular) y pulsa «Buscar».",
-           "Lee el plan: entrada, stop, TPs, apalancamiento y cuánto pierdes si toca el stop.",
-           "Si quieres la opinión de Grok (el chat), copia el mensaje de abajo y pégalo en grok.com."],
-          "«Más rentable» es la mayor ganancia esperada según 100,000 simulaciones con datos reales. No es una garantía.")
+    guide("Dos formas de obtener la operación más rentable ahora. En 🤖 ELIGE GROK, FG VIEW corre la mesa de 12 agentes "
+          "en varias criptos y le manda los números a Grok por MCP; Grok usa SUS agentes, elige una y dice qué espera. "
+          "En 🖥️ ELIGE LA MESA, deciden los votantes en código, sin internet. En los dos casos el plan (entrada, stop, "
+          "TPs) lo pone FG VIEW: Grok nunca pone precios.",
+          ["Elige el modo, cuántas criptos revisar y pulsa el botón.",
+           "En modo Grok: copia el mensaje, pégalo en grok.com y espera; la página se actualiza sola cuando Grok elija.",
+           "Lee el plan y decide tú. Abrir en papel es opcional."],
+          "«Más rentable» = mayor ganancia esperada según 100,000 simulaciones con datos reales. No es una garantía.")
+    modo = st.radio("¿Quién elige?", ["🤖 Elige Grok (MCP)", "🖥️ Elige la mesa (local)"], horizontal=True, key="gp_modo",
+                    help="Grok necesita el servidor MCP encendido, el túnel abierto y el conector puesto en grok.com.")
+    es_grok = modo.startswith("🤖")
+    if es_grok and not br.running():
+        st.warning("El servidor MCP está apagado: Grok no puede recibir los datos ni mandar su elección. "
+                   "Enciéndelo en GROK DESK (MCP) y abre el túnel.")
     c = st.columns([1, 1, 1.2, 1.3], vertical_alignment="bottom")
     top = c[0].slider("Criptos a revisar", 1, 8, 5, key="gp_top")
     both = c[1].checkbox("Probar LONG y SHORT", value=False, key="gp_both", help="Tarda el doble, pero revisa las dos direcciones.")
     sym = c[2].text_input("O una cripto en particular", value="", key="gp_sym", placeholder="SOL, ETH… (vacío = Grok elige)")
-    if c[3].button("🏆 Buscar la operación más rentable", type="primary", key="gp_go", width="stretch"):
-        with st.spinner("G-SCOUT elige candidatas · la mesa corre cada una · los G-* votan · G-JUDGE decide…"):
+    label = "🤖 Preparar datos y pedirle a Grok que elija" if es_grok else "🏆 Buscar la operación más rentable"
+    if c[3].button(label, type="primary", key="gp_go", width="stretch"):
+        with st.spinner("G-SCOUT elige candidatas · la mesa de 12 agentes corre cada una…"):
             try:
-                st.session_state["gp_out"] = pick.find(top, both, sym.strip())
+                if es_grok:
+                    st.session_state["gp_brief"] = pick.brief(top, both, sym.strip())
+                    st.session_state.pop("gp_out", None)
+                else:
+                    st.session_state["gp_out"] = pick.find(top, both, sym.strip())
             except Exception as exc:  # noqa: BLE001
                 st.error(f"No se pudo completar la búsqueda: {exc}")
+    gp = pick.state().get("grok")
+    if es_grok and gp is None:
+        _esperando(pick, br)
+        return
+    if es_grok and gp is not None:
+        _de_grok(pick, br, gp)
+        return
     out = st.session_state.get("gp_out") or pick.last
     if not out:
         st.info("Todavía no hay búsqueda. Pulsa «Buscar la operación más rentable».")
@@ -144,3 +165,86 @@ def render_grok_pick(svc, req) -> None:
     if best.get("tarjeta"):
         with st.expander("📇 Trade Card completa"):
             st.code(best["tarjeta"], language="text")
+
+
+def _plan_card(d: dict, who: str, grok: dict | None = None) -> None:
+    st.markdown(_hero(d, who, grok), unsafe_allow_html=True)
+
+
+def _esperando(pick, br) -> None:
+    """Modo Grok: candidatas listas, esperando que Grok elija por MCP."""
+    brief = pick.waiting()
+    if not brief:
+        st.info("Pulsa «Preparar datos y pedirle a Grok que elija». FG VIEW corre la mesa en varias criptos y deja los "
+                "números listos para que Grok los tome por MCP.")
+        return
+    st.success(f"✅ {len(brief['candidatas'])} candidatas listas y esperando a Grok · caducan en 20 min · "
+               f"fuente: {brief['fuente']}")
+    if brief.get("pausado"):
+        st.error("PAUSADO POR TUS REGLAS · " + str(brief["pausado"]))
+    st.markdown("#### 1 · Copia esto y pégalo en tu chat de Grok")
+    st.code(pick.pick_prompt(brief), language="text")
+    st.markdown("#### 2 · Esperando la elección de Grok…")
+    st.caption("Esta página se actualiza sola. Grok verá las candidatas con `fg_pick_datos` y mandará su elección con "
+               "`fg_pick_elige`.")
+    rows = [{"Ronda": c["id"], "Cripto": c["cripto"], "Dirección": c["direccion"], "P(TP1) %": c["prob_tp1"],
+             "Ventaja R": c["ventaja_r"], "Ganancia esperada $": c["ev_usd"], "P(SL) %": c["p_sl"], "Mesa": c["mesa"]}
+            for c in brief["candidatas"]]
+    st.dataframe(rows, hide_index=True, width="stretch")
+    sug = brief.get("sugerencia_mesa")
+    if sug:
+        st.caption(f"Para comparar, la mesa local habría elegido: {sug['veredicto']} {sug['direccion']} {sug['cripto']} "
+                   f"(ronda #{sug['id']}, Σ {sug['suma']:+d}). Grok puede elegir otra.")
+
+    def _wait() -> None:
+        if pick.state().get("grok") is not None:
+            st.rerun(scope="app")
+        st.caption("⏳ Esperando a Grok…")
+
+    st.fragment(_wait, run_every=4)()
+
+
+def _de_grok(pick, br, gp: dict) -> None:
+    """Modo Grok: ya eligió. Se muestra su elección con el plan de FG VIEW."""
+    d = gp.get("datos") or {}
+    st.markdown(f"### 🤖 Eligió Grok · {gp['at'][11:19]} UTC")
+    if gp["veredicto"] != "APRUEBA":
+        st.warning(f"Grok no la respalda del todo ({gp['veredicto']}): tómala como estudio, no como señal.")
+    if gp.get("pausado"):
+        st.error("PAUSADO POR TUS REGLAS · " + str(gp["pausado"]))
+    if d.get("plan"):
+        _plan_card(d, "GROK (MCP)", gp)
+    else:
+        st.info(f"{gp['veredicto']} {gp['direccion']} {gp['cripto']} · sin plan guardado para esa ronda.")
+    st.markdown("#### 🔮 Lo que espera Grok")
+    st.write(gp.get("lo_esperado") or "n/a")
+    k = st.columns(3)
+    k[0].metric("Confianza de Grok", f"{gp['confianza']}%")
+    k[1].metric("Movimiento esperado", f"{gp['movimiento_esperado_pct']:+.2f}%" if gp.get("movimiento_esperado_pct") is not None else "n/a")
+    k[2].metric("Horizonte", f"{gp['horizonte_min']:.0f} min" if gp.get("horizonte_min") is not None else "n/a")
+    for razon in gp.get("razones", [])[:6]:
+        st.caption(f"✓ {razon}")
+    for riesgo in gp.get("riesgos", [])[:6]:
+        st.caption(f"⚠ {riesgo}")
+    st.caption("Lo que dice Grok es su opinión. El plan, las probabilidades y la ganancia esperada salen de FG VIEW y de "
+               "las 100,000 simulaciones.")
+    a, b, c = st.columns([1, 1, 2])
+    if a.button("📝 Abrir en PAPEL", key="gp_paper_g", disabled=gp["veredicto"] != "APRUEBA",
+                help="Solo si Grok aprobó y la mesa no dijo NO OPERAR. Nunca es real."):
+        msg = pick.open_paper(gp["ronda_id"])
+        (st.success if "PAPEL" in msg.upper() else st.error)(msg)
+    if b.button("🔁 Pedir otra elección", key="gp_again_g"):
+        stt = pick.state()
+        stt["grok"], stt["brief"] = None, None
+        pick.save(stt)
+        st.rerun()
+    c.caption(f"Ronda #{gp['ronda_id']} · la mesa decía: {d.get('veredicto', 'n/a')} (Σ {d.get('suma', 'n/a')})")
+    if d.get("tarjeta"):
+        with st.expander("📇 Trade Card completa (FG VIEW)"):
+            st.code(d["tarjeta"], language="text")
+    hist = pick.state().get("history", [])[:-1]
+    if hist:
+        with st.expander(f"🗂️ Elecciones anteriores de Grok ({len(hist)})"):
+            for h in reversed(hist[-10:]):
+                st.caption(f"{h['at'][11:19]} · {h['veredicto']} {h['direccion']} {h['cripto']} · {h['confianza']}% · "
+                           f"{(h.get('lo_esperado') or '')[:110]}")
