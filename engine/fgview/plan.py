@@ -195,11 +195,12 @@ class PositionPlanner:
     # ------------------------------------------------- plan con precios de fuera (GROK PICK)
     def from_levels(self, capital: float, symbol: str, direction: str, entry: float, stop: float,
                     tps: list[tuple[float, float]] | None = None, atr5: float | None = None,
-                    lev_cap: int | None = None, risk_pct: float | None = None) -> Plan:
+                    lev_cap: int | None = None, risk_pct: float | None = None, leverage: int | None = None) -> Plan:
         """
         Plan con los PRECIOS que pone otro (p. ej. Grok en GROK PICK): entrada, stop y take profits.
-        El TAMAÑO, el apalancamiento y las comisiones los sigue poniendo FG VIEW con TUS reglas, y la
-        liquidación sigue quedando >= liq_safety veces más lejos que el stop. `tps`: [(precio, % que cierra)].
+        También puede pedir su `leverage`: se acepta si la liquidación sigue quedando >= liq_safety veces más lejos
+        que el stop y no pasa el máximo del nivel; si no, se rechaza diciéndole el máximo. El TAMAÑO (cuánto se
+        arriesga) y las comisiones los sigue poniendo FG VIEW con TUS reglas. `tps`: [(precio, % que cierra)].
         Lanza ValueError si los precios no son operables.
         """
         if capital <= 0 or entry <= 0 or direction not in ("LONG", "SHORT"):
@@ -235,8 +236,22 @@ class PositionPlanner:
         plan_tps = [(px, abs(px - entry) / entry * 100.0, part) for px, part in raw]
         notional = capital * risk_pct / 100.0 / sl_frac
         max_margin = capital * max_margin_pct / 100.0
-        lev_hi = min(tier.lev_max, self.max_safe_leverage(sl_frac), lev_cap or tier.lev_max)
-        lev = int(min(max(math.ceil(notional / max_margin) if max_margin > 0 else lev_hi, min(tier.lev_min, lev_hi)), lev_hi))
+        lev_safe = self.max_safe_leverage(sl_frac)
+        lev_hi = min(tier.lev_max, lev_safe, lev_cap or tier.lev_max)
+        if leverage is not None:
+            lev = int(leverage)
+            if lev < 1:
+                raise ValueError("El apalancamiento tiene que ser 1x o más.")
+            if lev > lev_safe:
+                raise ValueError(f"{lev}x deja la liquidación demasiado cerca del stop ({sl_frac * 100:.2f}%): "
+                                 f"el máximo seguro aquí es {lev_safe}x.")
+            if lev > tier.lev_max:
+                raise ValueError(f"{lev}x pasa el máximo del Nivel {tier.key} para {coin}: hasta {tier.lev_max}x.")
+            if lev_cap and lev > lev_cap:
+                raise ValueError(f"{lev}x pasa el tope por volatilidad reciente ({lev_cap}x).")
+            notes.append(f"Apalancamiento {lev}x pedido por GROK (máximo seguro aquí: {min(lev_safe, tier.lev_max)}x).")
+        else:
+            lev = int(min(max(math.ceil(notional / max_margin) if max_margin > 0 else lev_hi, min(tier.lev_min, lev_hi)), lev_hi))
         if notional / lev > max_margin + 1e-9:
             new_notional = max_margin * lev
             notes.append(f"La posición se recorta de {fmt_usd(notional)} a {fmt_usd(new_notional)} para respetar el "

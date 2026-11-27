@@ -76,6 +76,7 @@ class FGServices:
     ladder_desk: object | None = None  # 🪜 Modo escalera de la mesa
     grok: object | None = None  # 🤖 GROK DESK: equipo Grok (votos, G-JUDGE, rondas) y puente MCP
     copilot: object | None = None  # 🧭 Copiloto: Trade Card, COACH, reglas y SCRIBE
+    hotlist: object | None = None  # 🔥 Mejores criptos para operar ahora (Binance en vivo)
     audit: object | None = None  # Auditoría, tamaño, pausa y entrada vigilada (no toca rules.md)
     telegram: object | None = None  # 📲 Bot de Telegram del copiloto
     autopilot: object | None = None  # Piloto automático de la mesa
@@ -130,6 +131,9 @@ class FGServices:
         from engine.fgview.audit import AuditBook
 
         inst.audit = AuditBook(getattr(positions, "db", None))
+        from engine.fgview.hotlist import HotList
+
+        inst.hotlist = HotList(inst.tiers)
         inst.grok = GrokBridge(inst)
         from engine.fgview.telegram_bot import TelegramCopilot
 

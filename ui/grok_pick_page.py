@@ -43,7 +43,7 @@ def _hero(b: dict, who: str = "MESA", grok: dict | None = None) -> str:
              (f"{pre}STOP LOSS", f'{_px(p.get("sl"))} (−{p.get("sl_pct") or 0:.2f}%)', "#FF4D6D")]
     for i, tp in enumerate(tps[:3]):
         cells.append((f"{pre}TP{i + 1} · cierra {tp.get('cierra')}%", f'{_px(tp.get("precio"))} (+{tp.get("pct") or 0:.2f}%)', "#3DDC97"))
-    cells += [("APALANCAMIENTO", f'{p.get("apalancamiento", "n/a")}x', "#F2D27A"), ("MARGEN", f'${p.get("margen") or 0:,.2f}', "#E6E9EF"),
+    cells += [(f"{pre}APALANCAMIENTO", f'{p.get("apalancamiento", "n/a")}x', "#F2D27A"), ("MARGEN", f'${p.get("margen") or 0:,.2f}', "#E6E9EF"),
               ("RIESGO SI TOCA SL", f'${p.get("riesgo_usd") or 0:,.2f} ({b.get("riesgo_pct") or 0:.2f}%)', "#FF8A3D"),
               ("LIQUIDACIÓN", _px(p.get("liquidacion")), "#8C95A8")]
     grid = "".join(f'<div class="c"><i>{k}</i><b style="color:{c}">{v}</b></div>' for k, v, c in cells)

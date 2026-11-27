@@ -10,7 +10,8 @@ Dos modos:
 
 Grok SÍ puede poner sus propios precios (entrada, stop y take profits) en su elección. FG VIEW entonces:
   1. los valida (stop del lado correcto, ni pegado ni absurdo, TPs del lado correcto, R:R positivo, liquidación lejos);
-  2. calcula el TAMAÑO, el apalancamiento y las comisiones con TUS reglas (Grok nunca decide cuánto arriesgas);
+  2. acepta su apalancamiento si la liquidación queda lejos del stop, y calcula el TAMAÑO y las comisiones con TUS
+     reglas (Grok nunca decide cuánto arriesgas);
   3. vuelve a correr las 100,000 simulaciones SOBRE LOS PRECIOS DE GROK para decir qué se espera de verdad.
 Si no manda precios, se usa el plan de la mesa. Se ordena por veredicto → ganancia esperada neta → P(TP1).
 Qué nunca hace: abrir nada por su cuenta (abrir en papel es un botón aparte, con las reglas de siempre), prometer
@@ -160,7 +161,7 @@ class GrokPick:
         at = datetime.fromisoformat(b["at"])
         return None if datetime.now(timezone.utc) - at > timedelta(minutes=PICK_TTL_MIN) else b
 
-    def _grok_plan(self, rid: int, entrada, sl, tps) -> tuple[dict | None, str | None]:
+    def _grok_plan(self, rid: int, entrada, sl, tps, apalancamiento=None) -> tuple[dict | None, str | None]:
         """Arma y valida el plan con los PRECIOS de Grok, y le calcula su propia expectativa (Time Machine)."""
         ctx = self._ctx.get(rid)
         if ctx is None:
@@ -170,7 +171,8 @@ class GrokPick:
             plan = self.s.planner.from_levels(
                 self.team._capital(), ctx.symbol, ctx.direction, float(entrada),
                 float(sl), [(float(t.get("precio")), float(t.get("cierra", 0) or 0)) for t in (tps or [])],
-                atr5=getattr(snap, "atr5", None))
+                atr5=getattr(snap, "atr5", None),
+                leverage=int(apalancamiento) if apalancamiento is not None else None)
         except (ValueError, TypeError, KeyError, AttributeError) as exc:
             return None, f"Precios rechazados: {exc}"
         price = getattr(snap, "price", None)
@@ -193,7 +195,8 @@ class GrokPick:
                 "esperado": exp, "notas": plan.notes, "_plan": plan}, None
 
     def submit(self, ronda_id, veredicto: str, confianza: int, lo_esperado: str, razones=None, riesgos=None,
-               movimiento_esperado_pct=None, horizonte_min=None, entrada=None, stop_loss=None, take_profits=None) -> dict:
+               movimiento_esperado_pct=None, horizonte_min=None, entrada=None, stop_loss=None, take_profits=None,
+               apalancamiento=None) -> dict:
         """Grok elige (por MCP) y puede poner sus propios precios; FG VIEW los valida y dimensiona."""
         v = (veredicto or "").upper().replace("Ó", "O").strip()
         if v not in ("APRUEBA", "PRECAUCION", "VETA"):
@@ -213,10 +216,10 @@ class GrokPick:
             return {"error": f"La ronda {rid} no está entre las candidatas: {[c['id'] for c in b['candidatas']]}"}
         full = next((r for r in (self.last or {}).get("ranking", []) if r["id"] == rid), None)
         gplan = None
-        if entrada is not None or stop_loss is not None or take_profits:
+        if entrada is not None or stop_loss is not None or take_profits or apalancamiento is not None:
             if entrada is None or stop_loss is None:
                 return {"error": "Si pones precios, manda al menos entrada y stop_loss (sin SL no hay operación)."}
-            gplan, err = self._grok_plan(rid, entrada, stop_loss, take_profits)
+            gplan, err = self._grok_plan(rid, entrada, stop_loss, take_profits, apalancamiento)
             if err:
                 return {"error": err, "pista": "Corrige los precios y vuelve a llamar fg_pick_elige."}
             self._gplans[rid] = gplan.pop("_plan")
@@ -288,10 +291,11 @@ class GrokPick:
             "3) Manda tu elección con fg_pick_elige: ronda_id de la elegida, veredicto (APRUEBA / PRECAUCION / VETA), "
             "confianza 0-100, lo_esperado (qué esperas que pase, en una o dos frases, con números), razones, riesgos, "
             "movimiento_esperado_pct y horizonte_min.\n"
-            "4) PON TUS PRECIOS: manda también entrada, stop_loss y take_profits "
-            "[{\"precio\": x, \"cierra\": 50}, ...] basados en los niveles reales que ves en los datos (soportes, "
-            "resistencias, VWAP, ATR). FG VIEW los valida (stop del lado correcto, ni pegado ni absurdo, liquidación "
-            "lejos), calcula el tamaño y el apalancamiento con las reglas del usuario, y vuelve a correr las 100,000 "
-            "simulaciones sobre TUS precios para decir qué se espera. Si te los rechaza, corrige y vuelve a mandar. "
-            "Si no pones precios, se usa el plan de la mesa. No abras nada. "
+            "4) PON TUS PRECIOS Y TU APALANCAMIENTO: manda también entrada, stop_loss, take_profits "
+            "[{\"precio\": x, \"cierra\": 50}, ...] y apalancamiento, basados en los niveles reales que ves en los "
+            "datos (soportes, resistencias, VWAP, ATR). FG VIEW los valida (stop del lado correcto, ni pegado ni "
+            "absurdo, TPs del lado correcto, liquidación lejos del stop, apalancamiento dentro de lo seguro), calcula "
+            "el tamaño con las reglas del usuario, y vuelve a correr las 100,000 simulaciones sobre TUS niveles para "
+            "decir qué se espera. Si te rechaza algo, te dice el motivo y el máximo: corrige y vuelve a mandar. "
+            "Si no pones nada, se usa el plan de la mesa. No abras nada. "
             "Después dime en el chat tu reporte con el formato de siempre.")

@@ -1321,3 +1321,76 @@ def test_grok_pick_grok_sets_prices(fgdb):
     pos = fgdb.positions.all()[-1]
     assert pos["strategy"] == "GROK PICK" and pos["mode"] == "papel"
     assert pos["stop_loss"] == pytest.approx(gp["plan_grok"]["plan"]["sl"], rel=1e-6)
+
+
+def test_grok_pick_grok_sets_leverage(fgdb):
+    """Grok manda su apalancamiento: se acepta si la liquidación queda lejos del stop."""
+    fgdb.copilot.rules.change("cutoff", "23:59")
+    fgdb.copilot.rules.change("day_start", "00:00")
+    _desk_forced(fgdb)
+    pick = fgdb.grok.pick
+    c = pick.brief(symbol="DEMO")["candidatas"][0]
+    rid, px, k = c["id"], c["plan"]["entrada"], (1 if c["direccion"] == "LONG" else -1)
+    sl = px * (1 - k * 0.012)
+    assert "máximo seguro" in pick.submit(rid, "APRUEBA", 70, "x", entrada=px, stop_loss=sl, apalancamiento=90)["error"]
+    assert "1x o más" in pick.submit(rid, "APRUEBA", 70, "x", entrada=px, stop_loss=sl, apalancamiento=0)["error"]
+    out = pick.submit(rid, "APRUEBA", 75, "Espero TP1", entrada=px, stop_loss=sl, apalancamiento=8)
+    assert out["ok"] and out["con_tus_precios"]["apalancamiento"] == 8
+    gp = pick.state()["grok"]["plan_grok"]
+    assert gp["plan"]["apalancamiento"] == 8 and any("GROK" in n for n in gp["notas"])
+    assert gp["plan"]["riesgo_usd"] <= 1000 * 0.01 + 1e-6  # el tamaño lo sigue poniendo FG VIEW
+
+
+def test_hotlist_scores_and_classifies(monkeypatch):
+    """La lista de mejores criptos: ordena por operabilidad, clasifica nivel y avisa de lo raro."""
+    from engine.fgview.hotlist import HotList
+    from engine.fgview.policy import TierCatalog
+
+    rows = [
+        {"symbol": "BTCUSDT", "lastPrice": "90000", "priceChangePercent": "1.5", "highPrice": "91000",
+         "lowPrice": "89000", "quoteVolume": "9000000000", "count": "3000000"},
+        {"symbol": "ZECUSDT", "lastPrice": "300", "priceChangePercent": "8.0", "highPrice": "315",
+         "lowPrice": "290", "quoteVolume": "500000000", "count": "400000"},
+        {"symbol": "RAROUSDT", "lastPrice": "1", "priceChangePercent": "0.1", "highPrice": "1.005",
+         "lowPrice": "1.0", "quoteVolume": "25000000", "count": "300"},      # volumen justo, casi no se mueve
+        {"symbol": "CHICAUSDT", "lastPrice": "1", "priceChangePercent": "2", "highPrice": "1", "lowPrice": "1",
+         "quoteVolume": "1000000", "count": "10"},                            # ilíquida: se descarta
+        {"symbol": "USDCUSDT", "lastPrice": "1", "priceChangePercent": "0", "highPrice": "1", "lowPrice": "1",
+         "quoteVolume": "9e9", "count": "1"},                                 # estable: se descarta
+        {"symbol": "ETHUSDC", "lastPrice": "3000", "priceChangePercent": "1", "highPrice": "3010",
+         "lowPrice": "2990", "quoteVolume": "9e8", "count": "100"},           # no es par USDT: se descarta
+    ]
+
+    class _Resp:
+        status_code = 200
+
+        @staticmethod
+        def raise_for_status():
+            return None
+
+        @staticmethod
+        def json():
+            return rows
+
+    hot = HotList(TierCatalog(), ttl_s=0)
+    monkeypatch.setattr("engine.fgview.hotlist.requests.get", lambda *a, **k: _Resp())
+    coins, src = hot.top(10)
+    simbolos = [c.coin for c in coins]
+    # Ordenadas por operabilidad: ZEC se mueve más que BTC con buen volumen, así que va arriba
+    assert simbolos == ["ZEC", "BTC", "RARO"] and "Binance" in src
+    zec, btc, raro = coins
+    assert btc.tier == "A" and btc.listed and zec.tier == "B" and zec.listed  # ZEC ya está en las listas
+    assert raro.tier == "C" and not raro.listed  # desconocida: al nivel más prudente
+    assert zec.score > btc.score > raro.score >= 0
+    assert btc.volume_txt == "$9.0B" and zec.movement in ("movida", "muy movida") and raro.movement == "tranquila"
+    assert any("Casi no se mueve" in f for f in raro.flags)
+    d = hot.as_dicts(2)
+    assert len(d["criptos"]) == 2 and d["criptos"][0]["cripto"] == "ZEC" and d["criptos"][0]["en_tus_listas"]
+
+
+def test_hotlist_offline_says_so():
+    from engine.fgview.hotlist import HotList
+
+    hot = HotList(None, ttl_s=0)
+    coins, src = hot.top(5)  # Sin red en el contenedor de pruebas
+    assert coins == [] and ("sin conexión" in src or "Binance" in src)

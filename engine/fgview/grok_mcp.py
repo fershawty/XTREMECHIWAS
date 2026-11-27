@@ -680,21 +680,35 @@ class GrokBridge:
 
         @srv.tool(description="TU elección de la operación más rentable, con TUS PRECIOS (la toma la página GROK PICK). "
                               "ronda_id es el id de una candidata de fg_pick_datos. veredicto: APRUEBA, PRECAUCION o VETA. "
-                              "lo_esperado: qué esperas que pase, con números. Puedes mandar entrada, stop_loss y "
-                              "take_profits [{'precio': x, 'cierra': 50}]: FG VIEW los valida, calcula tamaño y "
-                              "apalancamiento con las reglas del usuario y vuelve a simular 100,000 caminos sobre tus "
-                              "precios (te devuelve la expectativa en 'con_tus_precios'). Si los rechaza, corrige y "
-                              "vuelve a llamar. Sin precios se usa el plan de la mesa. No abre ninguna operación.",
+                              "lo_esperado: qué esperas que pase, con números. Puedes mandar entrada, stop_loss, "
+                              "take_profits [{'precio': x, 'cierra': 50}] y apalancamiento: FG VIEW los valida (stop y "
+                              "TPs del lado correcto, liquidación lejos del stop, apalancamiento dentro del máximo "
+                              "seguro), calcula el tamaño con las reglas del usuario y vuelve a simular 100,000 caminos "
+                              "sobre tus niveles (expectativa en 'con_tus_precios'). Si rechaza algo te dice el motivo "
+                              "y el máximo: corrige y vuelve a llamar. Sin nada de eso se usa el plan de la mesa. "
+                              "No abre ninguna operación.",
                   annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=False))
         def fg_pick_elige(ronda_id: int, veredicto: str, confianza: int, lo_esperado: str,
                           razones: list[str] | None = None, riesgos: list[str] | None = None,
                           movimiento_esperado_pct: float | None = None, horizonte_min: int | None = None,
                           entrada: float | None = None, stop_loss: float | None = None,
-                          take_profits: list[dict] | None = None) -> dict:
+                          take_profits: list[dict] | None = None, apalancamiento: int | None = None) -> dict:
             out = self.pick.submit(ronda_id, veredicto, confianza, lo_esperado, razones, riesgos,
-                                   movimiento_esperado_pct, horizonte_min, entrada, stop_loss, take_profits)
+                                   movimiento_esperado_pct, horizonte_min, entrada, stop_loss, take_profits,
+                                   apalancamiento)
             self._log("fg_pick_elige", {"ronda_id": ronda_id, "veredicto": veredicto},
                       out.get("elegida") or out.get("error") or "sin datos", ["TAKER"])
+            return out
+
+        @srv.tool(description="Las criptos MEJORES PARA OPERAR ahora en Binance Futures (datos públicos de 24 h): "
+                              "volumen, movimiento del día, operaciones reales y un puntaje 0-100 de qué tan operable "
+                              "está cada una, con el nivel de riesgo (A/B/C) que usa FG VIEW. No predice el precio. "
+                              "Úsala antes de fg_pick_datos para elegir en qué criptos mirar.", annotations=ro)
+        def fg_mejores_criptos(top: int = 15) -> dict:
+            out = self.s.hotlist.as_dicts(max(1, min(40, int(top or 15))))
+            self._log("fg_mejores_criptos", {"top": top},
+                      " · ".join(f"{c['cripto']} {c['puntos_operable']:.0f}" for c in out["criptos"][:5]) or out["fuente"],
+                      ["SPOTTER"])
             return out
 
         return srv

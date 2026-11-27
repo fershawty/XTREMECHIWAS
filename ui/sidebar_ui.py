@@ -21,7 +21,7 @@ from engine.fgview.desk import AGENT_META, AGENTS
 from ui.critters import CRITTERS_JS
 
 SUBTITLES = {
-    "grafica": "velas · señal · niveles", "desk": "12 agentes · red Binance", "grok": "agentes de Grok vía MCP", "grok-pick": "la operación más rentable", "facil": "tu capital → 1 operación",
+    "grafica": "velas · señal · niveles", "desk": "12 agentes · red Binance", "grok": "agentes de Grok vía MCP", "grok-pick": "la operación más rentable", "hot": "qué cripto operar hoy", "facil": "tu capital → 1 operación",
     "time-machine": "100,000 simulaciones", "swing": "mantener hasta 12 h", "entry-timer": "cuándo entrar",
     "fgview": "plan por capital", "burn-out": "⛔ peligro extremo", "scanner": "top 5 · 5m/15m/1h",
     "news": "impacto · sentimiento", "alertas": "precio · squeeze · liq.", "riesgo": "límites del día",

@@ -44,6 +44,7 @@ from ui import pro_pages as ip  # noqa: E402
 from ui.desk_page import render_desk  # noqa: E402
 from ui.grok_page import render_grok  # noqa: E402
 from ui.grok_pick_page import render_grok_pick  # noqa: E402
+from ui.hot_page import render_hot  # noqa: E402
 from ui.mode import beginner, mode_switch  # noqa: E402
 from ui import sidebar_ui  # noqa: E402
 from engine.config import APP_VERSION  # noqa: E402
@@ -443,6 +444,7 @@ def build_pages(req: AnalysisRequest, layers: dict, auto: bool) -> dict[str, lis
             P(page(ip.render_burnout), "Burn Out", ":material/local_fire_department:", "burn-out"),
         ],
         "Escanear": [
+            P(page(render_hot), "Mejores para operar", ":material/local_fire_department:", "hot"),
             P(page(ip.render_scanner), "Chart Scanner", ":material/radar:", "scanner"),
             P(page(ip.render_news_monitor), "News Monitor", ":material/newspaper:", "news"),
             P(page(ip.render_alerts), "Alertas", ":material/notifications:", "alertas"),

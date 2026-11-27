@@ -26,10 +26,16 @@ class Tier:
 DEFAULT_TIERS: tuple[Tier, ...] = (
     Tier("A", 10, 20, 0.35, (0.40, 0.70, 1.00), ("BTC", "ETH")),
     Tier("B", 5, 10, 0.70, (0.80, 1.40, 2.00),
-         ("SOL", "BNB", "XRP", "LINK", "AVAX", "SUI", "LTC", "ADA", "TON", "HYPE", "NEAR", "APT", "DOT", "TRX", "BCH")),
+         # Grandes y líquidas: se mueven menos y aguantan más apalancamiento
+         ("SOL", "BNB", "XRP", "LINK", "AVAX", "SUI", "LTC", "ADA", "TON", "HYPE", "NEAR", "APT", "DOT", "TRX", "BCH",
+          "ZEC", "DASH", "ETC", "XLM", "HBAR", "ATOM", "FIL", "ICP", "AAVE", "UNI", "ALGO", "VET", "EGLD",
+          "THETA", "MKR", "NEO", "EOS", "STX", "IMX", "RUNE", "KAS", "TAO", "OP", "ARB")),
     Tier("C", 3, 5, 1.20, (1.50, 2.50, 3.50),
-         ("DOGE", "PEPE", "WIF", "BONK", "SHIB", "FLOKI", "TRUMP", "POPCAT", "TAO", "FET", "RENDER", "ENA", "WLD",
-          "ONDO", "JUP", "INJ", "SEI", "TIA", "ARB", "OP")),
+         # Memecoins, IA y small caps: mucho movimiento, apalancamiento bajo y SL ancho
+         ("DOGE", "PEPE", "WIF", "BONK", "SHIB", "FLOKI", "TRUMP", "POPCAT", "FET", "RENDER", "ENA", "WLD",
+          "ONDO", "JUP", "INJ", "SEI", "TIA", "CRV", "LDO", "DYDX", "GRT", "SNX", "COMP", "GALA", "SAND", "MANA",
+          "AXS", "KAVA", "ORDI", "PENGU", "PNUT", "VIRTUAL", "SPX", "FARTCOIN", "MOODENG", "GOAT", "ZEREBRO",
+          "AI16Z", "MOVE", "BERA", "KAITO", "ME", "IP", "S", "ZRO", "STRK", "BLUR", "APE", "CHZ", "ROSE", "ZIL")),
 )
 
 
