@@ -1,0 +1,15 @@
+{
+  "_ayuda": "Edita este archivo con datos de Tokenomist (desbloqueos), Farside (flujos de ETFs) o CryptoQuant (flujos de exchanges). Fechas en formato AAAA-MM-DD. pct_circulating = % del suministro circulante que se desbloquea. FG VIEW marca ⚠️ si supera el 2% en los próximos 7 días.",
+  "unlocks": [
+    {"coin": "SUI", "date": "2026-12-01", "pct_circulating": 1.3, "note": "Ejemplo: desbloqueo mensual (edítalo con datos reales)"}
+  ],
+  "burns": [
+    {"coin": "BNB", "date": "2026-10-15", "note": "Ejemplo: quema trimestral (edítalo con datos reales)"}
+  ],
+  "etf_flows": [
+    {"date": "2026-11-19", "asset": "BTC", "net_usd_m": 0, "note": "Ejemplo: flujo neto diario en millones de USD"}
+  ],
+  "exchange_flows": [
+    {"date": "2026-11-19", "coin": "BTC", "net_usd_m": 0, "note": "Negativo = salen de exchanges (alcista), positivo = entran (bajista)"}
+  ]
+}

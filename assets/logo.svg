@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" role="img" aria-label="FG VIEW">
+  <defs>
+    <linearGradient id="fgbg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#10131B"/><stop offset="1" stop-color="#05070A"/>
+    </linearGradient>
+    <linearGradient id="fggold" gradientUnits="userSpaceOnUse" x1="200" y1="200" x2="800" y2="800">
+      <stop offset="0" stop-color="#F7DC8B"/><stop offset=".55" stop-color="#D4AF37"/><stop offset="1" stop-color="#9C7A1E"/>
+    </linearGradient>
+    <radialGradient id="fgglow"><stop offset="0" stop-color="#FFF4C8"/><stop offset=".45" stop-color="#F2D27A" stop-opacity=".9"/>
+      <stop offset="1" stop-color="#D4AF37" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect x="20" y="20" width="960" height="960" rx="220" fill="url(#fgbg)" stroke="#D4AF37" stroke-opacity=".22" stroke-width="6"/>
+  <path d="M 778.2 387.6 A 300 300 0 1 1 640.8 235.1" fill="none" stroke="url(#fggold)"
+        stroke-width="44" stroke-linecap="round"/>
+  <path d="M 440 650 V 350 H 610 M 440 492 H 570" fill="none" stroke="url(#fggold)" stroke-width="44"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="722.9" cy="299.3" r="70" fill="url(#fgglow)"/>
+  <circle cx="722.9" cy="299.3" r="22" fill="#FFF4C8"/>
+</svg>

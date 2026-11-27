@@ -1,0 +1,44 @@
+{
+  // Terminal > Ejecutar tarea…
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "1. Crear entorno e instalar dependencias",
+      "type": "shell",
+      "windows": { "command": "python -m venv .venv; .venv\\Scripts\\python -m pip install --upgrade pip; .venv\\Scripts\\python -m pip install -r requirements.txt" },
+      "command": "python3 -m venv .venv && .venv/bin/python -m pip install --upgrade pip && .venv/bin/python -m pip install -r requirements.txt",
+      "problemMatcher": []
+    },
+    {
+      "label": "2. Abrir FG VIEW",
+      "type": "shell",
+      "windows": { "command": ".venv\\Scripts\\python -m streamlit run app.py" },
+      "command": ".venv/bin/python -m streamlit run app.py",
+      "problemMatcher": []
+    },
+    {
+      "label": "3. Pruebas",
+      "type": "shell",
+      "windows": { "command": ".venv\\Scripts\\python -m pytest -q" },
+      "command": ".venv/bin/python -m pytest -q",
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "4. Construir FGView.exe (Windows)",
+      "type": "shell",
+      "windows": { "command": ".venv\\Scripts\\python -m pip install pyinstaller==6.22.3; .venv\\Scripts\\python -m PyInstaller futures_scope.spec --noconfirm" },
+      "command": ".venv/bin/python -m pip install pyinstaller==6.22.3 && .venv/bin/python -m PyInstaller futures_scope.spec --noconfirm",
+      "problemMatcher": []
+    },
+    {
+      "label": "5. Compilar núcleo C++",
+      "detail": "Necesita compilador C++ (Windows: Build Tools for Visual Studio; Mac: xcode-select --install)",
+      "type": "shell",
+      "windows": { "command": ".venv\\Scripts\\python -m pip install pybind11==3.1.0; .venv\\Scripts\\python setup_fgcore.py build_ext --inplace; .venv\\Scripts\\python -c \"from engine.fgview import native; print(native.status())\"" },
+      "command": ".venv/bin/python -m pip install pybind11==3.1.0 && .venv/bin/python setup_fgcore.py build_ext --inplace && .venv/bin/python -c \"from engine.fgview import native; print(native.status())\"",
+      "group": "build",
+      "problemMatcher": ["$gcc", "$msCompile"]
+    }
+  ]
+}

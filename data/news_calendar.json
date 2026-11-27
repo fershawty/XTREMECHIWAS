@@ -1,0 +1,10 @@
+{
+  "_instrucciones": "Calendario MANUAL de noticias de alto impacto. Añade eventos a la lista 'events' con fecha/hora en UTC (formato ISO, terminando en Z). El bot no generará señales 30 min antes ni después (NEWS_WINDOW_MINUTES en .env). Útil para FOMC, CPI, NFP, discursos de la Fed, vencimientos o eventos cripto (halving, desbloqueos de tokens, fallos de la SEC).",
+  "_ejemplo": {
+    "datetime_utc": "2026-12-09T19:00:00Z",
+    "title": "FOMC - Decisión de tipos de interés",
+    "currency": "USD",
+    "impact": "High"
+  },
+  "events": []
+}

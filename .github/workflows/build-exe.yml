@@ -1,0 +1,395 @@
+# Compila FGView.exe en un servidor Windows de GitHub en cada push.
+# Descarga: pestaña "Actions" del repositorio -> última ejecución verde -> "Artifacts" -> FGView-Windows
+name: Build FGView.exe
+
+on:
+  push:
+    branches: [main, futures-scope]
+    tags: ["v*"]  # Etiqueta vX.Y.Z -> compila y publica el Release
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Etiqueta del Release a publicar (ej. v3.0.0). Vacío = solo compilar."
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Pruebas (Ubuntu)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+      - name: Compilar núcleo C++ (fgcore)
+        run: |
+          pip install pybind11==3.1.0
+          python setup_fgcore.py build_ext --inplace
+          python -c "from engine.fgview import native; print(native.status()); assert native.AVAILABLE"
+      - name: Pytest
+        env:
+          NEWS_FILTER_ENABLED: "false"
+          CONTEXT_ENABLED: "false"
+        run: pytest -q
+
+  windows-exe:
+    name: Compilar .exe (Windows)
+    needs: tests
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Instalar dependencias + PyInstaller
+        run: pip install -r requirements.txt pyinstaller==6.22.3
+      - name: Compilar núcleo C++ (fgcore, MSVC)
+        continue-on-error: true  # Si fallara, la app usa la versión Python (mismos resultados)
+        run: |
+          pip install pybind11==3.1.0
+          python setup_fgcore.py build_ext --inplace
+          python -c "from engine.fgview import native; print(native.status())"
+      - name: Verificar Tcl/Tk (ventana de arranque)
+        shell: pwsh
+        run: |
+          python -c "import tkinter; t = tkinter.Tcl(); print('Tcl', t.eval('info patchlevel'), t.eval('info library'))"
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "Tcl no arranca con la configuración por defecto: se apunta a la carpeta tcl de Python"
+            $tcl = Join-Path $env:pythonLocation "tcl\tcl8.6"
+            $tk = Join-Path $env:pythonLocation "tcl\tk8.6"
+            Get-ChildItem (Join-Path $env:pythonLocation "tcl") -ErrorAction SilentlyContinue | Select-Object Name
+            "TCL_LIBRARY=$tcl" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+            "TK_LIBRARY=$tk" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+            $env:TCL_LIBRARY = $tcl
+            $env:TK_LIBRARY = $tk
+            python -c "import tkinter; t = tkinter.Tcl(); print('Tcl (reparado)', t.eval('info library'))"
+            if ($LASTEXITCODE -ne 0) { Write-Error "Tcl/Tk no utilizable en este Python"; exit 1 }
+          }
+      - name: Compilar
+        run: pyinstaller futures_scope.spec --noconfirm
+      - name: Comprobar datos de Tcl/Tk empaquetados
+        shell: pwsh
+        run: |
+          foreach ($d in "_tcl_data", "_tk_data") {
+            $p = "dist\FGView\_internal\$d"
+            if (-not (Test-Path $p)) { Write-Error "Falta $p en el paquete"; exit 1 }
+            "{0}: {1} archivos" -f $d, (Get-ChildItem $p -Recurse -File).Count
+          }
+      - name: Autotest del ejecutable
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath "dist\FGView\FGView.exe" -ArgumentList "--selftest" -Wait -PassThru
+          Get-Content "dist\FGView\data\selftest.txt" -ErrorAction SilentlyContinue
+          Get-Content "dist\FGView\data\launcher.log" -Tail 40 -ErrorAction SilentlyContinue
+          if ($p.ExitCode -ne 0) { Write-Error "El autotest del .exe falló"; exit 1 }
+          # Entregamos la carpeta limpia (los datos y el .env se crean en el primer arranque del usuario)
+          Remove-Item -Recurse -Force "dist\FGView\data", "dist\FGView\.env" -ErrorAction SilentlyContinue
+      # Se sube la carpeta tal cual: GitHub la entrega en UN solo .zip con FGView/ dentro
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FGView-Windows
+          path: dist/
+          retention-days: 30
+
+  macos-app:
+    name: Compilar .app (macOS ${{ matrix.arch }})
+    needs: tests
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15-intel  # Mac Intel (compatible desde Monterey 12)
+            arch: intel
+    runs-on: ${{ matrix.runner }}
+    env:
+      PY: .venv/bin/python
+      MACOSX_DEPLOYMENT_TARGET: "12.0"  # Todo lo que se compile aquí debe arrancar desde Monterey
+      # cryptography (dependencia de ccxt) ya no publica binario para Mac Intel en su última
+      # versión; sin esto pip la compila enlazada a librerías de macOS 15. Se fuerza el binario oficial.
+      PIP_ONLY_BINARY: "cryptography,cffi"
+    steps:
+      - uses: actions/checkout@v4
+      # Python OFICIAL de python.org (universal2, compatible desde macOS 11): el Python de
+      # GitHub en macOS 15 trae librerías que exigen macOS 15 y no arrancarían en Sonoma.
+      - name: Instalar Python 3.11 oficial (python.org)
+        run: |
+          curl -sSLo py.pkg https://www.python.org/ftp/python/3.11.9/python-3.11.9-macos11.pkg
+          sudo installer -pkg py.pkg -target /
+          /Library/Frameworks/Python.framework/Versions/3.11/bin/python3.11 -m venv .venv
+          $PY -m pip install --upgrade pip
+      # Homebrew del servidor trae OpenSSL compilada para macOS 15: se elimina ANTES de instalar
+      # para que nada se enlace a ella (la app usará la del Python oficial, compatible con Sonoma).
+      - name: Aislar OpenSSL de Homebrew
+        run: |
+          brew uninstall --ignore-dependencies --force openssl@3 openssl@1.1 2>/dev/null || true
+          sudo rm -rf /usr/local/lib/ossl-modules /usr/local/lib/libcrypto* /usr/local/lib/libssl* /usr/local/opt/openssl* 2>/dev/null || true
+      - name: Instalar dependencias + PyInstaller
+        run: |
+          # ccxt fija cryptography 50, que no tiene binario para Mac Intel: se instala ccxt sin
+          # dependencias y se usa cryptography 48.0.1 (última con binario Intel, API compatible).
+          grep -v '^ccxt' requirements.txt > req-mac.txt
+          $PY -m pip install -r req-mac.txt pyinstaller==6.22.3 2>&1 | tee pip.log
+          $PY -m pip install --no-deps ccxt==4.5.92
+          $PY -m pip install "cryptography==48.0.1" typing_extensions aiohttp yarl orjson coincurve 2>&1 | tee -a pip.log
+          $PY -c "import ccxt, cryptography; print('ccxt', ccxt.__version__, '· cryptography', cryptography.__version__)"
+          echo "--- Paquetes compilados desde código fuente (si hay):"
+          grep -iE "Building wheel for|Building wheels for" pip.log || echo "ninguno"
+      - name: Compilar núcleo C++ (fgcore, clang, Intel, macOS 12)
+        continue-on-error: true  # Si fallara, la app usa la versión Python (mismos resultados)
+        env:
+          ARCHFLAGS: "-arch x86_64"
+        run: |
+          $PY -m pip install pybind11==3.1.0
+          $PY setup_fgcore.py build_ext --inplace
+          $PY -c "from engine.fgview import native; print(native.status())"
+      - name: Compatibilidad con macOS 12 Monterey (reinstala binarios demasiado nuevos)
+        run: $PY tools/macos_compat.py 12.0
+      - name: Verificar Tcl/Tk (ventana de arranque)
+        run: $PY -c "import tkinter; t = tkinter.Tcl(); print('Tcl', t.eval('info patchlevel'), t.eval('info library'))"
+      - name: Compilar
+        run: $PY -m PyInstaller futures_scope.spec --noconfirm
+      - name: Comprobar Tcl/Tk empaquetado y compatibilidad con Monterey (macOS 12)
+        run: |
+          APP=dist/FGView.app/Contents
+          test -f $APP/Frameworks/_tcl_data/init.tcl || test -f $APP/Resources/_tcl_data/init.tcl || { echo "Falta _tcl_data"; exit 1; }
+          test -f $APP/Frameworks/_tk_data/tk.tcl || test -f $APP/Resources/_tk_data/tk.tcl || { echo "Falta _tk_data"; exit 1; }
+          echo "Tcl/Tk empaquetado OK"
+          $PY - <<'PY'
+          import pathlib, re, subprocess, sys
+          MAGIC = {b"\xcf\xfa\xed\xfe", b"\xce\xfa\xed\xfe", b"\xca\xfe\xba\xbe", b"\xfe\xed\xfa\xcf"}
+          worst, worst_file, count, bad = (0, 0), "", 0, []
+          for p in pathlib.Path("dist/FGView.app").rglob("*"):
+              if p.is_symlink() or not p.is_file():
+                  continue
+              with open(p, "rb") as fh:
+                  if fh.read(4) not in MAGIC:
+                      continue
+              count += 1
+              out = subprocess.run(["otool", "-l", str(p)], capture_output=True, text=True).stdout
+              for block in out.split("Load command"):
+                  if "cmd LC_BUILD_VERSION" in block:
+                      m = re.search(r"^\s*minos (\d+)\.(\d+)", block, re.M)
+                  elif "cmd LC_VERSION_MIN_MACOSX" in block:
+                      m = re.search(r"^\s*version (\d+)\.(\d+)", block, re.M)
+                  else:
+                      continue
+                  if m:
+                      v = (int(m[1]), int(m[2]))
+                      if v > (12, 0):
+                          bad.append(f"{v[0]}.{v[1]} {p}")
+                      if v > worst:
+                          worst, worst_file = v, str(p)
+          print(f"{count} binarios Mach-O · macOS mínimo requerido: {worst[0]}.{worst[1]} ({worst_file})")
+          for b in bad[:20]:
+              print("  exige más que Monterey:", b)
+          if bad:
+              print("--- Binarios que enlazan libcrypto/libssl:")
+              for p in pathlib.Path("dist/FGView.app").rglob("*.so"):
+                  deps = subprocess.run(["otool", "-L", str(p)], capture_output=True, text=True).stdout
+                  hits = [l.strip() for l in deps.splitlines()[1:] if "libcrypto" in l or "libssl" in l]
+                  if hits:
+                      print(f"  {p.name}: {hits}")
+          sys.exit(1 if bad else 0)
+          PY
+      - name: Autotest de la app
+        run: |
+          dist/FGView.app/Contents/MacOS/FGView --selftest
+          cat "$HOME/Library/Application Support/FGView/data/selftest.txt" || true
+      - name: Crear .dmg
+        run: |
+          mkdir dmg
+          ditto dist/FGView.app dmg/FGView.app
+          ln -s /Applications dmg/Aplicaciones
+          for i in 1 2 3; do
+            hdiutil create -volname "FG VIEW" -srcfolder dmg -ov -format UDZO "FGView-macOS-${{ matrix.arch }}.dmg" && break
+            sleep 5
+          done
+          ls -lh *.dmg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FGView-macOS-${{ matrix.arch }}
+          path: FGView-macOS-${{ matrix.arch }}.dmg
+          retention-days: 30
+
+  release:
+    name: Publicar Release
+    needs: [windows-exe, macos-app]
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: art
+      - name: Preparar archivos
+        run: |
+          cd art/FGView-Windows && zip -qr ../../FGView-V2-Windows.zip FGView && cd ../..
+          cp art/FGView-macOS-intel/FGView-macOS-intel.dmg FGView-V2-macOS-Intel.dmg
+          ls -lh *.zip *.dmg
+      - name: Crear Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > notes.md <<'MD'
+          ## FG VIEW · BUILD 1 · BY GUS X FER X ALFREDOBONUS
+
+          Terminal de trading para futuros cripto: mesa de 7 agentes, Time Machine, anti-squeeze y piloto automático en papel.
+
+          **Descargas**
+          - **Windows**: `FGView-V2-Windows.zip` → descomprime y abre `FGView\FGView.exe`
+          - **Mac Intel (macOS 12 Monterey o superior)**: `FGView-V2-macOS-Intel.dmg` → arrastra a Aplicaciones; la primera vez Control + clic → Abrir
+
+          **Novedades v5.9 · CONECTAR_GROK.bat: conectar con Grok en un clic**
+          - Nuevo `CONECTAR_GROK.bat` junto a `FGView.exe` (Windows): doble clic y abre FG VIEW y el túnel de Cloudflare, con los pasos en pantalla para pegar la dirección en FG VIEW y en grok.com. Si falta cloudflared, te dice el comando exacto para instalarlo.
+
+          **Novedades v5.8 · 🔥 Mejores para operar + muchas más criptos**
+          - Nueva página «Mejores para operar» (menú Escanear): lee en vivo TODOS los perpetuos USDT-M de Binance y te dice, en palabras simples, cuáles están mejor para operar ahora: cuánto dinero se mueve, qué tan movida está, cuántas operaciones reales hay y un puntaje 0-100, con su nivel de riesgo y avisos. No predice el precio: dice si se puede operar. Desde ahí mandas una a la mesa de 12 agentes.
+          - Muchas más criptos clasificadas (92 en total): ZEC, DASH, ETC, XLM, HBAR, ATOM, FIL, ICP, AAVE, UNI, ALGO, VET, EGLD, THETA, MKR, NEO, EOS, STX, IMX, RUNE, KAS, TAO, CRV, LDO, DYDX, GRT, SNX, COMP, GALA, SAND, MANA, AXS, KAVA, ORDI, PENGU, PNUT, VIRTUAL, SPX, FARTCOIN, MOODENG, GOAT, AI16Z, MOVE, BERA, KAITO, ME, IP, S, ZRO, STRK, BLUR, APE, CHZ, ROSE, ZIL y más.
+          - Nueva herramienta MCP `fg_mejores_criptos` para que Grok elija dónde mirar antes de hacer su pick.
+          - En GROK PICK, Grok también manda **su apalancamiento**: se acepta si la liquidación queda lejos del stop y dentro del máximo del nivel; si no, se le dice el máximo para que corrija.
+
+          **Novedades v5.7 · Grok pone sus propios precios en el PICK**
+          - En GROK PICK modo 🤖 Elige Grok, ahora Grok manda **entrada, stop loss y take profits** junto con su elección (`fg_pick_elige`). Es su pick de verdad, no solo escoger entre las opciones de la mesa.
+          - FG VIEW valida esos precios antes de aceptarlos: stop del lado correcto, ni pegado (<0.15%) ni absurdo (>10%), TPs del lado correcto, R:R neto positivo, liquidación lejos del stop y entrada a menos de 3% del precio actual. Si algo falla, se le devuelve el motivo para que corrija.
+          - El **tamaño, el apalancamiento y las comisiones los sigue poniendo FG VIEW** con tus reglas: Grok nunca decide cuánto arriesgas.
+          - Se vuelven a correr las **100,000 simulaciones sobre los precios de Grok** para decir qué se espera de verdad (P(TP1), P(SL), ganancia esperada, R:R), y eso es lo que muestra la página.
+          - Abrir en papel usa los precios de Grok, con SL obligatorio.
+
+          **Novedades v5.6 · GROK PICK elegido por Grok vía MCP**
+          - GROK PICK ahora tiene dos modos. 🤖 **Elige Grok (MCP)**: FG VIEW corre la mesa de 12 agentes en varias criptos, deja las candidatas con todos sus números y Grok, desde grok.com con sus agentes, elige una y dice **qué espera** (movimiento esperado, horizonte, razones y riesgos). La página espera y se actualiza sola en cuanto Grok elige. 🖥️ **Elige la mesa (local)**: como antes, sin internet.
+          - Dos herramientas MCP nuevas: `fg_pick_datos` (candidatas con sus números) y `fg_pick_elige` (la elección de Grok). Mensaje listo para copiar y pegar en el chat.
+          - Grok nunca pone precios: el plan (entrada, SL, TPs, apalancamiento, riesgo) y las probabilidades siempre salen de FG VIEW y de las 100,000 simulaciones; lo de Grok se muestra aparte como su opinión.
+          - Las candidatas caducan a los 20 min, se guarda el historial de elecciones y abrir en papel sigue siendo un botón opcional.
+
+          **Novedades v5.5 · 🏆 GROK PICK: la operación más rentable a pedido**
+          - Nuevo apartado GROK PICK (menú Operar): pulsas un botón y el equipo de agentes de Grok revisa las mejores criptos, la mesa de 12 agentes corre cada una, los 6 votantes G-* votan y G-JUDGE decide. Te muestra la de mayor ganancia esperada entre las aprobadas, con su plan completo (entrada, SL, TP1-3, apalancamiento, margen, riesgo, liquidación), P(TP1), ventaja, P(SL) y los votos.
+          - No es automático: tú decides. Abrir en papel es un botón opcional (solo si G-JUDGE aprobó y la mesa no dijo NO OPERAR).
+          - Mensaje listo para pedirle su opinión a Grok en el chat; su veredicto aparece en la misma página. Ranking de todas las candidatas.
+          - Nueva herramienta MCP fg_mejor_operacion para que Grok la pida desde el chat.
+
+          **Novedades v5.4 · GROK DESK v2 (visual pulido)**
+          - GROK DESK con la terminal completa estilo FG (MESA PNL, THE TAPE con libro, ORBITALES con agentes, pipeline, traza, Pricer con Galton y cordilleras) y el panel EQUIPO GROK: Grok al centro, los 11 agentes G-* orbitando con su voto, rayos hacia los que votaron, G-JUDGE con su veredicto, veredictos y operaciones en papel.
+          - Arreglo: la página se recargaba cada 5 s y reiniciaba todas las animaciones (velas a medias, Galton sin bolitas, cordilleras aplastadas). Ahora solo se actualiza cuando cambian los datos.
+          - Arreglo: las etiquetas de los 12 agentes ya no se enciman con las tarjetas del ticket en ORBITALES (también en FG DESK).
+          - Números con conteo animado, líneas de entrada/SL/TP1 en THE TAPE, libro con transición, aviso de dato viejo.
+
+          **Novedades v5.3 · GROK DESK con el equipo de agentes de Grok**
+          - Nueva terminal animada de GROK DESK con el equipo de Grok en órbita (las esferas se iluminan según su voto y G-JUDGE pulsa con el veredicto).
+          - El equipo de Grok en código: votos, G-JUDGE con reglas fijas y rondas guardadas con su reporte (fg_ronda). Respeta al COACH, veta si la mesa dice NO OPERAR y nunca cambia el tamaño ni el stop.
+          - 10 herramientas MCP nuevas para Grok: ronda, reporte, revisión, estado, auditoría de trampas (pass/warn/fail/n/a), tamaño paso a paso, vigilancia de posiciones, salud y entrada vigilada; prompt «agentes_fg».
+          - Registro de fichas para sumar agentes nuevos a la mesa sin reescribir los 12.
+          - Token del conector oculto en pantalla. Todo por MCP es solo papel.
+
+          **Novedades v5.2 · papel arreglado + 📲 Telegram + 📱 app de iPhone**
+          - Arreglo: en papel el piloto casi nunca abría nada (solo entraba en OPERAR). Nuevo «🧪 Papel de aprendizaje» (encendido por defecto): en PAPEL abre lo más recomendado aunque la mesa diga ESPERAR o NO OPERAR, con riesgo reducido y marcado APRENDIZAJE. No cuenta para desbloquear el real y nunca aplica en real.
+          - La mesa analiza todas las candidatas y luego envía solo la elegida (antes podía enviar la primera aunque una posterior fuera mejor).
+          - Bot de Telegram del copiloto: /tarjeta, /radar, /plan, /coach, /reglas, /resumen, /semana, /stop; solo responde a tu chat; el COACH contesta primero si escribes en tilt; aviso de cada cierre y un tablero fijado que se actualiza solo.
+          - App de iPhone (Safari → Agregar a inicio): Radar de tarjetas, armar tarjeta, posiciones con stop y TP1, COACH, diario y resultados; usa el mismo túnel que el MCP y no puede abrir órdenes.
+
+          **Novedades v5.1 · 🧭 Copiloto (prompt de 21 páginas adaptado a futuros de Binance)**
+          - TRADE CARD con formato fijo (SCORE y banda GREEN/YELLOW/RED/SKIP, por qué, seguridad, momentum, mi lectura, plan, FOMO, TASA BASE, reglas). Cada número con su fuente y edad; nunca promete ganancias.
+          - COACH: medidor FOMO 0-10 que reduce el tamaño, pausa tras rachas de pérdidas, stop del día, límites, hora límite y respuesta al "tilt". El piloto automático respeta tus reglas.
+          - Tus reglas (rules.md) versionadas, con espera de 12 h si las cambias justo después de una pérdida.
+          - SCRIBE: califica cada tarjeta con las velas reales (A-D), tasa base honesta, resumen del día y de la semana con fugas.
+          - Nuevas herramientas MCP para Grok (fg_tarjeta, fg_coach, fg_reglas, fg_resumen) y el prompt del copiloto listo para pegar en grok.com.
+
+          **Novedades v5.0 · 🤖 GROK DESK (agentes de Grok vía MCP)**
+          - Nueva página GROK DESK, igual a FG DESK (red de agentes, orbitales, tape, Galton, cordilleras), manejada por los agentes de Grok desde grok.com.
+          - FG VIEW trae su propio servidor MCP: en grok.com → Connectors → Custom pegas la dirección y Grok puede correr la mesa, ver mercado, ballenas y funding, consultar cada agente y dar su veredicto.
+          - Usa tu suscripción de Grok: no hace falta API key de xAI. Tutorial paso a paso con Cloudflare Tunnel dentro de la app.
+          - Seguridad: por MCP no existen órdenes reales (solo análisis y papel), token secreto en la dirección, y Grok puede frenar pero no forzar.
+          - Se retira el Analista IA por API de la v4.9.
+
+          **Novedades v4.9 · Analista IA por API (retirado en la v5.0)**
+          - Una IA real revisa la operación que armó la mesa (con noticias y contexto) y da su segunda opinión: ✅ APRUEBA, ⚠️ PRECAUCIÓN (baja a ESPERAR con riesgo mínimo) o ⛔ VETA (NO OPERAR). Solo puede frenar: nunca sube el riesgo ni cambia el SL.
+          - Grok (xAI) por defecto; también Claude. Tutorial paso a paso dentro de FG DESK. Ojo: la suscripción de Grok de ~$30 NO incluye la API; la API se paga aparte por uso en console.x.ai (≈ 1 centavo por análisis con Grok 4.7).
+          - Tope diario de gasto, reutiliza la opinión 10 min y solo se llama cuando hay operación candidata. Marcador que mide si sus vetos aciertan.
+          - Sin key la app funciona igual que siempre.
+
+          **Novedades v4.8 · 12 agentes con datos de Binance**
+          - 🐋 WHALE: sigue las operaciones agresivas grandes (ballenas) y a los top traders de Binance.
+          - 🌊 FLOW: compras vs ventas a mercado de los últimos 30 min + open interest de 1 h.
+          - 💸 FUNDING: bloquea si la multitud ya está demasiado de tu lado o si el cobro de funding está por llegar y te toca pagar.
+          - 🚧 GATE: compuerta anti-squeeze dedicada (si bloquea es ⛔ NO OPERAR).
+          - 🛡️ GUARD: stop fuera del ruido de 5 min, escalera de TPs, breakeven tras TP1, trailing y tiempo máximo.
+          - 🕸️ Nueva vista «La red»: 12 agentes alrededor del núcleo FG con su dato en vivo y pulsos hacia el núcleo; 5 personajes nuevos (ballena, gota, moneda, señal con barrera y tortuga).
+
+          **Novedades v4.7 · 🪜 modo escalera para capital pequeño ($10–20)**
+          - Empiezas con 10–20 USDT y la mesa con el piloto hacen crecer el saldo solos: 4% de riesgo hasta $50, 3% hasta $100 y 2% hasta $250; luego la tabla normal.
+          - Caja fuerte: cada vez que el saldo se duplica, el 20% de la ganancia se guarda y ya no se arriesga. Freno: tras 2 pérdidas seguidas el riesgo baja a la mitad; si cae al 50% de lo puesto, se pausa sola.
+          - Respeta el mínimo de orden de Binance (BTC ~100, ETH ~20, otras ~5 USDT): si no alcanza, la mesa busca otra cripto.
+          - Prueba real permitida con ≤ 25 USDT sin las 50 operaciones de papel, siempre con API key sin retiro, LIVE_TRADING_ENABLED=true, margen aislado y SL en el exchange.
+
+          **Novedades v4.6 · barra lateral profesional y veredicto de 3 niveles**
+          - 🧭 Barra lateral reorganizada: marca con reloj UTC, tarjeta de mercado con mini-gráfica, menú compacto con iconos de línea, contadores y página activa resaltada, mini-mesa de agentes y configuración agrupada.
+          - 🚦 Cada análisis da SIEMPRE un veredicto ✅ OPERAR / ⏸️ ESPERAR / ⛔ NO OPERAR, junto con lo más recomendado y su probabilidad.
+          - 🤖 El piloto puede entrar solo en OPERAR (recomendado) o también en ESPERAR con riesgo reducido; NO OPERAR nunca se ejecuta solo. Enfocado en Binance Futures.
+
+          **Novedades v4.5 · personajes y modo operable**
+          - 👾 **Personajes propios** para los 7 agentes (explorador de un ojo, búho, mago, aleta, robot cubo, cangrejo y fantasma guardián) con ojos que parpadean y miran, y expresiones: sonríe al aprobar, ✕ y ceño al bloquear, dormido en espera.
+          - 🧭 Los agentes **recorren su gráfica mientras piensan**: el Spotter sigue las velas, el Edge sube y baja por el libro, el Taker se asoma al spread, el Prior camina sobre la cresta, el Kelly sobre la curva de capital, el Pricer suelta las bolitas del Galton y el Closer baja por la traza; con haz de escaneo y burbuja de pensamiento.
+          - ⚡ **Más rayos y nodos**: relámpagos ramificados del núcleo a los agentes y entre ellos, constelación de nodos conectados con pulsos de energía; personajes también en la sinapsis y el pipeline.
+          - 🎲 **Modo operable**: aunque la mesa no la recomiende, te da la mejor operación disponible marcada NO RECOMENDADA, con riesgo reducido (máx. 0.5%) y SL obligatorio. El piloto automático solo abre las aprobadas.
+
+          **Novedades v4.4 · agentes trabajando en pantalla**
+          - 🛸 Cada agente sale de su órbita y **vuela al panel donde trabaja** (Spotter → la cinta, Prior → las cordilleras, Pricer → el Galton, Edge → el libro, Kelly → el PNL, Taker → la escalera, Closer → la traza), con estela, el panel iluminado en su color y su etiqueta con el dato real.
+          - 📊 Más parámetros: valor y traspaso de cada paso en la traza, gráfica de actividad, marcas ▲▼ de cruces de EMA, value area y contadores en la cinta, curva de campana con μ/σ en el Pricer y encabezado de cordilleras (activas, calientes, cresta).
+
+          **Novedades v4.3 · FG DESK TERMINAL**
+          - 🛰️ **ORBITALES**: esfera armilar 3D con los 7 agentes orbitando el núcleo FG y el ticket saltando de agente en agente, radar de rastreo, fuentes de datos, Mission Control, cuenta regresiva al cierre de vela, telemetría por agente y registro de vuelo.
+          - 📼 **THE TAPE**: velas, bandas σ del VWAP, perfil de volumen y **escalera real del libro de órdenes** de Binance con spread y desequilibrio.
+          - 🎲 **EL PRICER**: tablero de Galton cuyas bolitas siguen la distribución REAL del Time Machine (en R), con P(TP1), P(SL), EV y ¼ Kelly.
+          - 🏔️ **CORDILLERAS DE SEÑALES**: 16 señales reales en el tiempo (RSI, volumen, ADX, ATR, Bollinger, MACD, VWAP z, EMAs, filtros) con cresta caliente.
+          - 💹 **MESA PNL**, pipeline, traza, tickers y LIVE WIRE en una sola terminal animada; debajo, la sinapsis neuronal, el abanico, el radar, la rotación y la calibración.
+
+          **Novedades v4.2 · FG VIEW V2**
+          - 🧠 **FG DESK**: mesa de 7 agentes para operaciones cortas en futuros (Spotter → Prior → Pricer → Edge → Kelly → Taker → Closer). Si uno bloquea, no se opera.
+          - 🎯 **Precisión**: calibración sin mirar el futuro (¿cuando dice 60%, gana el 60%?), probabilidad combinada Time Machine + base histórica, ventaja neta en R después de comisiones y tamaño por ¼ de Kelly (nunca más que la tabla de capital).
+          - 🔄 **Rotación de señales**: cada filtro pesa según lo que está funcionando en las últimas 24 h. Libro de órdenes y bandas Z del VWAP en el Spotter.
+          - ✨ **Animaciones**: sinapsis neuronal (dendritas, impulsos, orbe central, rayos de aprobación), pipeline, LIVE WIRE, THE TAPE con bandas Z, radar de señales, abanico de futuros, traza, rotación y calibración.
+          - 🤖 **Piloto automático** de la mesa en papel; el modo real solo se desbloquea con 50 operaciones, profit factor ≥ 1.2 y drawdown ≤ 10%, más tu activación. Botón rojo de apagado.
+          - 🎨 **Rediseño V2** tipo terminal profesional y **logo nuevo minimalista**. Marca FG VIEW.
+
+          **Novedades v4.1**
+          - 🌙 **Modo SWING / nocturno**: para dejar la operación abierta hasta 12 h. Tendencia de 4 h + 1 h, SL estructural, 3–5x máximo, liquidación lejísimos del SL y Time Machine de caminos de 8–12 h.
+          - 🧊 **Anti-revancha**: 30 min sin volver a entrar en la misma cripto o dirección después de una pérdida.
+          - 🔍 **Revisor de historial**: pega el texto del PDF de Binance o sube el CSV/Excel y te marca liquidaciones, operaciones sin SL, revanchas, horas sin protección y memecoins.
+          - ⛔ **Sin SL no hay orden**: el Order Executor rechaza cualquier orden sin Stop Loss válido (antes de la liquidación).
+          - 👥 **Long/Short Ratio de Binance** en el anti-squeeze: si hay muchísimas cuentas en corto, no se abre SHORT.
+          - 💸 **Entradas post-only (maker 0.02%)** y 📈 **trailing stop** automático tras TP1.
+          - 🧮 Simulación de papel paso a paso (respeta los movimientos de SL del escudo y del trailing).
+
+          **Novedades Build 1**
+          - 📊 La gráfica con la recomendación de operación (LONG/SHORT, entrada, SL, TPs) se muestra fija arriba en TODAS las páginas (v4.0.2).
+          - ⚡ Time Machine mucho más rápido (v4.0.3): descarga del historial en paralelo, primer resultado inmediato con velas de 5 min, precarga automática en segundo plano y barra de progreso con tiempos.
+          - 🛡️ Anti-squeeze (v4.0.4): detecta subidas/caídas bruscas que liquidan, aviso fijo en la gráfica, bloqueo de SHORT/LONG en riesgo alto, apalancamiento limitado al peor movimiento de 30 min de las últimas 24 h y alerta automática para posiciones abiertas.
+          - 🔥 BURN OUT ya no bloquea (v4.0.4): siempre da la operación; si no es recomendable la marca ⚠️ con los motivos.
+          - 🧲 Anti short squeeze 2.0 (v4.0.5): no recomienda SHORT después de una caída fuerte (agotamiento, RSI en sobreventa, fuera de Bollinger), zonas estimadas de liquidación de cortos y largos en la gráfica, y escudo automático que mueve el SL (break-even con ganancia, más cerca con pérdida; también en el exchange en modo real).
+          - 🎓/🧠 Interruptor **PRINCIPIANTE / EXPERTO**: explicaciones paso a paso o todo el detalle técnico.
+          - 🧭 Rediseño: menú lateral por secciones (Operar, Escanear, Riesgo y capital, Contexto, Herramientas).
+          - ⏳ **Time Machine**: 100,000 simulaciones Monte Carlo (bootstrap por bloques de 15–30 min, 90 días de velas de 1 min, solo tramos con volatilidad ±20% de la actual) → P(TP1/TP2/TP3/SL/tiempo), expectativa y VaR 95% con veredicto. Núcleo C++.
+          - 📡 **Chart Scanner**: niveles A/B/C en 5m/15m/1h (cruce EMA 9/21, rupturas de 1h, rebote VWAP, divergencias RSI, picos de volumen, squeeze) → top 5 por puntuación, auto cada minuto.
+          - 📰 **News Monitor**: calendario + noticias cripto + anuncios de exchanges con impacto y sentimiento; bloqueo ±30 min por impacto alto.
+          - ⏱️ **Entry Timer**: cierre de vela de 5 min, sesiones de Londres/NY, aviso de funding y cancelación si el precio se aleja > 0.3 × ATR.
+          - 🛡️ **Risk Manager**: stop diario, máximo 2 posiciones, bloqueo de posiciones correlacionadas y liquidación ≥ 3× el SL.
+          - 💰 **Budget Manager**: saldo real, riesgo a la mitad tras drawdown del 10% y sugerencia de retiro del 20% cada +25%.
+          - 🤖 **Order Executor** semiautomático: modo papel por defecto; real en Binance/Bybit solo con LIVE_TRADING_ENABLED=true, API key sin retiros y con lista de IPs (verificado con el exchange), margen aislado, SL y TPs reduce-only al entrar.
+          - 🔔 **Alertas**: precio, cruce de EMAs, movimiento brusco y liquidación cerca por Telegram/webhook.
+          - 💎 **Fundamentales cripto** (fees de DefiLlama, desbloqueos > 2%) y 🐋 **Smart Money** (Congreso de EE. UU. y ballenas) como contexto.
+          - 🔥 **BURN OUT** (⛔ peligro extremo): bolsa de quema ≤ 5% del capital, 50–100x en BTC/ETH y 25–50x en nivel B, prohibido en memecoins, solo con P(TP1) ≥ 65% y señal ≥ 80, máximo 2 intentos al día, bloqueo de 7 días si llega a $0 y confirmación escribiendo CONFIRMO.
+
+          _Herramienta educativa: solo ejecuta órdenes si tú confirmas (papel por defecto). No es asesoría financiera._
+          MD
+          TAG="${{ inputs.release_tag }}"; TAG="${TAG:-$GITHUB_REF_NAME}"
+          gh release create "$TAG" FGView-V2-Windows.zip FGView-V2-macOS-Intel.dmg --target "$GITHUB_SHA" \
+            --repo "$GITHUB_REPOSITORY" --title "FG VIEW V2 ($TAG)" --notes-file notes.md --latest

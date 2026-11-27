@@ -1,0 +1,79 @@
+# Build de Windows para esta línea de trabajo (GROK DESK).
+# No sustituye el release estable: publica un zip como artifact y, en push o
+# workflow_dispatch, un Release marcado como pre-lanzamiento.
+name: Windows preview GROK DESK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["cursor/**"]
+  pull_request:
+    branches: [futures-scope]
+
+permissions:
+  contents: read
+
+jobs:
+  windows-exe:
+    name: FGView.exe (preview)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Instalar dependencias + PyInstaller
+        run: pip install -r requirements.txt pyinstaller==6.22.3
+      - name: Compilar núcleo C++ (fgcore, MSVC)
+        continue-on-error: true
+        run: |
+          pip install pybind11==3.1.0
+          python setup_fgcore.py build_ext --inplace
+          python -c "from engine.fgview import native; print(native.status())"
+      - name: Compilar
+        run: pyinstaller futures_scope.spec --noconfirm
+      - name: Autotest del ejecutable
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath "dist\FGView\FGView.exe" -ArgumentList "--selftest" -Wait -PassThru
+          Get-Content "dist\FGView\data\selftest.txt" -ErrorAction SilentlyContinue
+          if ($p.ExitCode -ne 0) { Write-Error "El autotest del .exe falló"; exit 1 }
+          Remove-Item -Recurse -Force "dist\FGView\data", "dist\FGView\.env" -ErrorAction SilentlyContinue
+          Compress-Archive -Path dist\FGView -DestinationPath FGView-V2-Windows.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FGView-V2-Windows
+          path: FGView-V2-Windows.zip
+          retention-days: 14
+
+  prerelease:
+    name: Publicar pre-lanzamiento
+    needs: windows-exe
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: FGView-V2-Windows
+          path: dist
+      - name: Release de pre-lanzamiento
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes=$(cat <<'MD'
+          ## FG VIEW · pre-lanzamiento GROK DESK
+
+          Build de Windows de la rama de trabajo. No es el release estable.
+
+          Descomprime y abre `FGView\FGView.exe`. Solo análisis y papel por el conector MCP: no coloca órdenes reales.
+
+          _Herramienta educativa. No es asesoría financiera._
+          MD
+          )
+          gh release delete v5.2.0-grok-desk --yes --cleanup-tag || true
+          gh release create v5.2.0-grok-desk dist/FGView-V2-Windows.zip \
+            --prerelease --target "$GITHUB_SHA" --title "FG VIEW Windows preview (GROK DESK)" \
+            --notes "$notes"
