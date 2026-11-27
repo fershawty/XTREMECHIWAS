@@ -77,6 +77,7 @@ datas += [
     ("data/crypto_fundamentals.json", "data"),
     (".streamlit/config.toml", ".streamlit"),
     (".env.example", "."),
+    ("CONECTAR_GROK.bat", "."),
     ("assets/icon.png", "assets"),
     ("assets/logo.png", "assets"),
     ("assets/logo.svg", "assets"),
@@ -115,8 +116,8 @@ if sys.platform == "darwin":
         info_plist={
             "CFBundleName": "FGView",
             "CFBundleDisplayName": "FG VIEW",
-            "CFBundleShortVersionString": "5.8.0",
-            "CFBundleVersion": "5.8.0",
+            "CFBundleShortVersionString": "5.9.0",
+            "CFBundleVersion": "5.9.0",
             "LSMinimumSystemVersion": "12.0",
             "NSHighResolutionCapable": True,
             "NSHumanReadableCopyright": "FG VIEW V2 · BY GUS X FER X ALFREDOBONUS",

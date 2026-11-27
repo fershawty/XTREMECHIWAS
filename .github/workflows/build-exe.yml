@@ -249,6 +249,9 @@ jobs:
           - **Windows**: `FGView-V2-Windows.zip` → descomprime y abre `FGView\FGView.exe`
           - **Mac Intel (macOS 12 Monterey o superior)**: `FGView-V2-macOS-Intel.dmg` → arrastra a Aplicaciones; la primera vez Control + clic → Abrir
 
+          **Novedades v5.9 · CONECTAR_GROK.bat: conectar con Grok en un clic**
+          - Nuevo `CONECTAR_GROK.bat` junto a `FGView.exe` (Windows): doble clic y abre FG VIEW y el túnel de Cloudflare, con los pasos en pantalla para pegar la dirección en FG VIEW y en grok.com. Si falta cloudflared, te dice el comando exacto para instalarlo.
+
           **Novedades v5.8 · 🔥 Mejores para operar + muchas más criptos**
           - Nueva página «Mejores para operar» (menú Escanear): lee en vivo TODOS los perpetuos USDT-M de Binance y te dice, en palabras simples, cuáles están mejor para operar ahora: cuánto dinero se mueve, qué tan movida está, cuántas operaciones reales hay y un puntaje 0-100, con su nivel de riesgo y avisos. No predice el precio: dice si se puede operar. Desde ahí mandas una a la mesa de 12 agentes.
           - Muchas más criptos clasificadas (92 en total): ZEC, DASH, ETC, XLM, HBAR, ATOM, FIL, ICP, AAVE, UNI, ALGO, VET, EGLD, THETA, MKR, NEO, EOS, STX, IMX, RUNE, KAS, TAO, CRV, LDO, DYDX, GRT, SNX, COMP, GALA, SAND, MANA, AXS, KAVA, ORDI, PENGU, PNUT, VIRTUAL, SPX, FARTCOIN, MOODENG, GOAT, AI16Z, MOVE, BERA, KAITO, ME, IP, S, ZRO, STRK, BLUR, APE, CHZ, ROSE, ZIL y más.

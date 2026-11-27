@@ -25,7 +25,7 @@ from dotenv import load_dotenv
 
 # --- Marca / versión (cámbialo aquí y se actualiza en la app y el .exe) -------
 APP_NAME = "FG VIEW"
-APP_VERSION = "5.8.0"
+APP_VERSION = "5.9.0"
 BUILD_TAG = "V2 · BY GUS X FER X ALFREDOBONUS"
 APP_TITLE = f"{APP_NAME} {BUILD_TAG.split(' · ')[0]}"  # "FG VIEW V2"
 APP_CREDITS = "BY GUS X FER X ALFREDOBONUS"
@@ -55,6 +55,10 @@ if IS_FROZEN:
             shutil.copy(_src, _dst)
     if not (APP_HOME / ".env").exists() and (BASE_DIR / ".env.example").exists():
         shutil.copy(BASE_DIR / ".env.example", APP_HOME / ".env")
+    if sys.platform == "win32":  # Atajo para conectar con Grok, junto al .exe
+        _bat = BASE_DIR / "CONECTAR_GROK.bat"
+        if _bat.exists() and not (APP_HOME / _bat.name).exists():
+            shutil.copy(_bat, APP_HOME / _bat.name)
 
 # Cargamos el .env (si no existe, simplemente no hace nada)
 load_dotenv(APP_HOME / ".env")
