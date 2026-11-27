@@ -1246,3 +1246,24 @@ def test_iphone_webapp_served_with_token(fgdb):
         assert br.app_url(local=True).endswith(f"/app/{tok}/")
     finally:
         br.stop()
+
+
+def test_grok_pick_finds_best_and_only_paper(fgdb):
+    fgdb.copilot.rules.change("cutoff", "23:59")
+    fgdb.copilot.rules.change("day_start", "00:00")
+    _desk_forced(fgdb)
+    pick = fgdb.grok.pick
+    out = pick.find(symbol="DEMO", both_sides=True)
+    assert out["mejor"] is not None and len(out["ranking"]) == 2
+    b = out["mejor"]
+    assert b["veredicto"] in ("APRUEBA", "PRECAUCION", "VETA") and b["plan"] and b["fuente"].startswith("DEMO")
+    assert pick.score(out["ranking"][0]) >= pick.score(out["ranking"][1])
+    before = len(fgdb.positions.all())
+    assert len(fgdb.positions.all()) == before  # Buscar no abre nada
+    msg = pick.open_paper(b["id"])
+    if b["veredicto"] == "APRUEBA":
+        assert "PAPEL" in msg.upper() or "rechazada" in msg
+    else:
+        assert "Solo se abre" in msg
+    assert "fg_tarjeta" in pick.grok_prompt(b) and "grok_veredicto" in pick.grok_prompt(b)
+    assert pick.open_paper(999999).startswith("Primero")

@@ -136,6 +136,9 @@ class GrokBridge:
 
         self.s = services
         self.team = GrokTeam(services)
+        from engine.fgview.grok_pick import GrokPick
+
+        self.pick = GrokPick(services, self.team)  # 🏆 La operación más rentable a pedido
         self._mem: dict = {}
         self.last_dec = None  # Última DeskDecision pedida por Grok (para animar la página)
         self._server = None
@@ -646,6 +649,20 @@ class GrokBridge:
                                                    "revisión y la ficha para diseñar agentes nuevos.")
         def agentes_fg() -> str:
             return agents_prompt()
+
+        @srv.tool(description="La operación MÁS RENTABLE ahora según el equipo de agentes de Grok: G-SCOUT elige "
+                              "candidatas A/B, la mesa corre cada una, los G-* votan y G-JUDGE decide; se ordena por "
+                              "veredicto, ganancia esperada neta (EV) y P(TP1). No abre nada. top = cuántas criptos revisar "
+                              "(1-8); ambos_lados = probar LONG y SHORT.", annotations=ro)
+        def fg_mejor_operacion(top: int = 5, ambos_lados: bool = False) -> dict:
+            out = self.pick.find(max(1, min(8, int(top or 5))), bool(ambos_lados))
+            best = out.get("mejor")
+            self._log("fg_mejor_operacion", {"top": top, "ambos_lados": ambos_lados},
+                      f"{best['veredicto']} {best['direccion']} {best['cripto']} · EV {best['ev_usd']}" if best else "sin datos",
+                      ["SPOTTER", "WHALE", "FLOW", "FUNDING", "GATE", "PRIOR", "PRICER", "EDGE", "KELLY"])
+            slim = [{k: r[k] for k in ("id", "cripto", "direccion", "veredicto", "suma", "prob_tp1", "ventaja_r", "ev_usd")}
+                    for r in out["ranking"]]
+            return {"mejor": best, "ranking": slim, "nota": out["nota"], "modo": "solo análisis (no abre)"}
 
         return srv
 

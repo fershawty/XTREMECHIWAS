@@ -249,6 +249,12 @@ jobs:
           - **Windows**: `FGView-V2-Windows.zip` → descomprime y abre `FGView\FGView.exe`
           - **Mac Intel (macOS 12 Monterey o superior)**: `FGView-V2-macOS-Intel.dmg` → arrastra a Aplicaciones; la primera vez Control + clic → Abrir
 
+          **Novedades v5.5 · 🏆 GROK PICK: la operación más rentable a pedido**
+          - Nuevo apartado GROK PICK (menú Operar): pulsas un botón y el equipo de agentes de Grok revisa las mejores criptos, la mesa de 12 agentes corre cada una, los 6 votantes G-* votan y G-JUDGE decide. Te muestra la de mayor ganancia esperada entre las aprobadas, con su plan completo (entrada, SL, TP1-3, apalancamiento, margen, riesgo, liquidación), P(TP1), ventaja, P(SL) y los votos.
+          - No es automático: tú decides. Abrir en papel es un botón opcional (solo si G-JUDGE aprobó y la mesa no dijo NO OPERAR).
+          - Mensaje listo para pedirle su opinión a Grok en el chat; su veredicto aparece en la misma página. Ranking de todas las candidatas.
+          - Nueva herramienta MCP fg_mejor_operacion para que Grok la pida desde el chat.
+
           **Novedades v5.4 · GROK DESK v2 (visual pulido)**
           - GROK DESK con la terminal completa estilo FG (MESA PNL, THE TAPE con libro, ORBITALES con agentes, pipeline, traza, Pricer con Galton y cordilleras) y el panel EQUIPO GROK: Grok al centro, los 11 agentes G-* orbitando con su voto, rayos hacia los que votaron, G-JUDGE con su veredicto, veredictos y operaciones en papel.
           - Arreglo: la página se recargaba cada 5 s y reiniciaba todas las animaciones (velas a medias, Galton sin bolitas, cordilleras aplastadas). Ahora solo se actualiza cuando cambian los datos.
